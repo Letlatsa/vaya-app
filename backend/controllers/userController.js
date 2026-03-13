@@ -1,9 +1,16 @@
 const User = require('../models/User');
+const TempUser = require('../models/TempUser');
+const { sendOTPEmail } = require('../services/emailService');
 
-// @desc    Register a new user
+// Generate a 4-digit OTP
+const generateOTP = () => {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+};
+
+// @desc    Send OTP to user's email
 // @route   POST /api/users/register
 // @access  Public
-const registerUser = async (req, res) => {
+const sendOTP = async (req, res) => {
   try {
     const { name, email, phoneNumber } = req.body;
 
@@ -15,50 +22,108 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Check if user already exists by phone number
-    const existingUser = await User.findOne({ phoneNumber });
+    // Check if user already exists in permanent collection
+    const existingUser = await User.findOne({ 
+      $or: [{ email }, { phoneNumber }]
+    });
+    
     if (existingUser) {
-      console.log('❌ Registration failed: Phone number already exists:', phoneNumber);
       return res.status(400).json({
         success: false,
-        message: 'User with this phone number already exists'
+        message: 'User with this email or phone number already exists'
       });
     }
 
-    // Check if email already exists
-    const existingEmail = await User.findOne({ email });
-    if (existingEmail) {
-      console.log('❌ Registration failed: Email already exists:', email);
-      return res.status(400).json({
-        success: false,
-        message: 'User with this email already exists'
-      });
-    }
+    // Delete any existing temp user with same email
+    await TempUser.deleteMany({ email });
 
-    // Create new user
-    const newUser = new User({
+    // Generate OTP
+    const otp = generateOTP();
+    
+    // Log OTP for development testing
+    console.log('📱 OTP for', email, ':', otp);
+
+    // Save to TempUser collection
+    const tempUser = new TempUser({
       name,
       email,
-      phoneNumber
+      phoneNumber,
+      otp
     });
 
-    // Save user to database
+    await tempUser.save();
+
+    // Send OTP via email
+    const emailResult = await sendOTPEmail(email, otp, name);
+
+    if (!emailResult.success) {
+      console.error('Failed to send email:', emailResult.error);
+      // Still return success since we saved the OTP for testing
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent to your email',
+      // Remove this in production - for testing only
+      devOTP: otp
+    });
+
+  } catch (error) {
+    console.error('Send OTP Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+// @desc    Verify OTP and create permanent user
+// @route   POST /api/users/verify-otp
+// @access  Public
+const verifyOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    // Validate input
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide email and OTP'
+      });
+    }
+
+    // Find temp user
+    const tempUser = await TempUser.findOne({ email, otp });
+
+    if (!tempUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP'
+      });
+    }
+
+    // Create permanent user
+    const newUser = new User({
+      name: tempUser.name,
+      email: tempUser.email,
+      phoneNumber: tempUser.phoneNumber
+    });
+
     await newUser.save();
 
-    // Log successful registration
+    // Delete temp user
+    await TempUser.deleteOne({ _id: tempUser._id });
+
     console.log('✅ User registered successfully:', {
       id: newUser._id,
       name: newUser.name,
       email: newUser.email,
-      phoneNumber: newUser.phoneNumber,
-      role: newUser.role,
-      createdAt: newUser.createdAt
+      phoneNumber: newUser.phoneNumber
     });
 
-    // Return success response
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
+      message: 'Registration successful',
       data: {
         id: newUser._id,
         name: newUser.name,
@@ -69,7 +134,8 @@ const registerUser = async (req, res) => {
     });
 
   } catch (error) {
-    // Handle validation errors
+    console.error('Verify OTP Error:', error);
+    
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
@@ -78,19 +144,9 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Handle duplicate key error (for phone number)
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: 'Phone number already registered'
-      });
-    }
-
-    // Server error
-    console.error('Registration Error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error during registration'
+      message: 'Server error'
     });
   }
 };
@@ -144,7 +200,8 @@ const getUserById = async (req, res) => {
 };
 
 module.exports = {
-  registerUser,
+  sendOTP,
+  verifyOTP,
   getAllUsers,
   getUserById
 };

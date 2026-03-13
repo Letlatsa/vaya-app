@@ -3,9 +3,14 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 
 // @route   POST /api/users/register
-// @desc    Register a new user
+// @desc    Send OTP to user's email
 // @access  Public
-router.post('/register', userController.registerUser);
+router.post('/register', userController.sendOTP);
+
+// @route   POST /api/users/verify-otp
+// @desc    Verify OTP and create permanent user
+// @access  Public
+router.post('/verify-otp', userController.verifyOTP);
 
 // @route   GET /api/users
 // @desc    Get all users
