@@ -1,4 +1,5 @@
 import axios from 'axios';
+import authStorage from '@/utils/authStorage';
 
 // API Configuration
 // Store all API URLs and endpoints in one place
@@ -13,7 +14,14 @@ export const API_ENDPOINTS = {
   REGISTER: '/api/users/register',
   VERIFY_OTP: '/api/users/verify-otp',
   LOGIN: '/api/users/login',
+  LOGIN_VERIFY: '/api/users/login-verify',
+  LOGOUT: '/api/users/logout',
+  VALIDATE_TOKEN: '/api/users/validate-token',
   GET_USER: '/api/users/:id',
+  
+  // Driver endpoints
+  DRIVERS: '/api/drivers',
+  DRIVER_REGISTER: '/api/drivers/register',
   
   // Trip endpoints
   TRIPS: '/api/trips',
@@ -30,6 +38,32 @@ const api = axios.create({
   },
 });
 
+// Add request interceptor to include auth token
+api.interceptors.request.use(
+  async (config) => {
+    const token = await authStorage.getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid
+      authStorage.clearSession();
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Helper function to get full URL
 export const getApiUrl = (endpoint: string): string => {
   return `${API_BASE_URL}${endpoint}`;
@@ -44,4 +78,5 @@ export const getApiUrlWithParams = (endpoint: string, params: Record<string, str
   return `${API_BASE_URL}${url}`;
 };
 
+export { authStorage };
 export default api;

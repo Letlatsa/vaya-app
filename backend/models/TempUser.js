@@ -17,13 +17,16 @@ const tempUserSchema = new mongoose.Schema({
   phoneNumber: {
     type: String,
     required: [true, 'Phone number is required'],
-    trim: true,
-    unique: true
+    trim: true
   },
   otp: {
     type: String,
     required: [true, 'OTP is required'],
     length: 4
+  },
+  isLogin: {
+    type: Boolean,
+    default: false
   },
   createdAt: {
     type: Date,
@@ -35,5 +38,6 @@ const tempUserSchema = new mongoose.Schema({
 // Index for faster queries
 tempUserSchema.index({ email: 1 });
 tempUserSchema.index({ otp: 1 });
+tempUserSchema.index({ email: 1, isLogin: 1 });
 
 module.exports = mongoose.model('TempUser', tempUserSchema);

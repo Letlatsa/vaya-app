@@ -1,35 +1,44 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
+import React, { useContext } from 'react';
+import { createDrawerNavigator } from '@react-navigation/drawer';
+import { UserContext } from '../_layout';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import HomeScreen from './index';
+import ExploreScreen from './explore';
+import ProfileScreen from '../profile';
+import CustomDrawerContent from '@/components/CustomDrawerContent';
+
+const Drawer = createDrawerNavigator();
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { userData } = useContext(UserContext);
 
   return (
-    <Tabs
+    // @ts-ignore - Type issues with react-navigation/drawer v7
+    <Drawer.Navigator
+      drawerContent={(props: any) => (
+        <CustomDrawerContent {...props} userData={userData} />
+      )}
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.fill" color={color} />,
-        }}
-      />
-    </Tabs>
+        drawerStyle: {
+          width: 280,
+        },
+        drawerActiveTintColor: '#FF6B00',
+        drawerInactiveTintColor: '#333',
+        drawerLabelStyle: {
+          marginLeft: -20,
+          fontSize: 15,
+        },
+      }}
+    >
+      {/* @ts-ignore */}
+      <Drawer.Screen name="Home" component={HomeScreen} />
+      {/* @ts-ignore */}
+      <Drawer.Screen name="MyRides" component={ExploreScreen} />
+      {/* @ts-ignore */}
+      <Drawer.Screen name="Profile" component={ProfileScreen} />
+      {/* @ts-ignore */}
+      <Drawer.Screen name="Settings" component={ExploreScreen} />
+    </Drawer.Navigator>
   );
 }

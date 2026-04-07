@@ -9,10 +9,16 @@ import {
   ScrollView,
   SafeAreaView,
 } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useNavigation } from 'expo-router';
+import { DrawerActions } from '@react-navigation/native';
 
 export default function HomeScreen() {
   const { width, height } = useWindowDimensions();
+  const navigation = useNavigation();
+  
+  const openDrawer = () => {
+    navigation.dispatch(DrawerActions.openDrawer());
+  };
   
   // Responsive sizes
   const logoSize = Math.min(width, height) * 0.15;
@@ -24,6 +30,15 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header with Menu Button */}
+      <View style={styles.headerBar}>
+        <TouchableOpacity onPress={openDrawer} style={styles.menuButton}>
+          <Text style={styles.drawerMenuIcon}>☰</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Vaya</Text>
+        <View style={styles.placeholder} />
+      </View>
+      
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header with Logo */}
         <View style={styles.header}>
@@ -94,6 +109,29 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 30,
+  },
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FF6B00',
+  },
+  menuButton: {
+    padding: 8,
+  },
+  drawerMenuIcon: {
+    fontSize: 24,
+    color: '#fff',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  placeholder: {
+    width: 40,
   },
   header: {
     alignItems: 'center',

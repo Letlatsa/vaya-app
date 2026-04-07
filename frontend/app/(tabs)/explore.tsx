@@ -9,14 +9,19 @@ import {
   ScrollView,
   SafeAreaView,
 } from 'react-native';
+import { useNavigation } from 'expo-router';
+import { DrawerActions } from '@react-navigation/native';
 
 export default function ExploreScreen() {
   const { width, height } = useWindowDimensions();
+  const navigation = useNavigation();
+  
+  const openDrawer = () => {
+    navigation.dispatch(DrawerActions.openDrawer());
+  };
   
   // Responsive sizes
   const logoSize = Math.min(width, height) * 0.12;
-  const titleFontSize = Math.min(width, height) * 0.045;
-  const subtitleFontSize = Math.min(width, height) * 0.022;
   const labelFontSize = Math.min(width, height) * 0.018;
   const paddingHorizontal = width * 0.06;
   const cardWidth = width - paddingHorizontal * 2;
@@ -36,8 +41,12 @@ export default function ExploreScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
-        <View style={[styles.header, { paddingHorizontal }]}>
-          <Text style={[styles.headerTitle, { fontSize: titleFontSize }]}>Profile</Text>
+        <View style={styles.headerBar}>
+          <TouchableOpacity onPress={openDrawer} style={styles.menuButton}>
+            <Text style={styles.drawerMenuIcon}>☰</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitleText}>My Rides</Text>
+          <View style={styles.placeholder} />
         </View>
 
         {/* Profile Card */}
@@ -101,13 +110,28 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 30,
   },
-  header: {
-    paddingVertical: 20,
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: '#FF6B00',
   },
-  headerTitle: {
+  menuButton: {
+    padding: 8,
+  },
+  drawerMenuIcon: {
+    fontSize: 24,
+    color: '#fff',
+  },
+  headerTitleText: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  placeholder: {
+    width: 40,
   },
   profileCard: {
     flexDirection: 'row',

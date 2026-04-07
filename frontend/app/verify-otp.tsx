@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useContext, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,15 +13,17 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import api, { API_ENDPOINTS } from '@/constants/apiConfig';
+import axios from 'axios';
+import { UserContext } from './_layout';
+import authStorage from '@/utils/authStorage';
 
-// API URL from config
-const VERIFY_OTP_URL = API_ENDPOINTS.VERIFY_OTP;
+const API_URL = 'http://localhost:5000/api/users';
 
 export default function OTPScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { email } = params;
+  const { email, isLogin } = params;
+  const { updateUserData } = useContext(UserContext);
   
   const { width, height } = useWindowDimensions();
   
@@ -35,7 +37,10 @@ export default function OTPScreen() {
   
   const [otp, setOtp] = useState(['', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
-  const inputRefs = useRef<(TextInput | null)[]>([]);
+  
+  // Create refs for OTP inputs
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inputsRef = useRef<any[]>([]);
   
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -43,41 +48,50 @@ export default function OTPScreen() {
   const [modalMessage, setModalMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
-  useEffect(() => {
-    // Focus on first input when screen loads
-    if (inputRefs.current[0]) {
-      inputRefs.current[0].focus();
-    }
-  }, []);
-
   const handleOtpChange = (value: string, index: number) => {
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
-
-    // Auto-focus next input
-    if (value && index < 3) {
-      inputRefs.current[index + 1]?.focus();
-    }
-
-    // Submit when all digits are entered
-    if (value && index === 3) {
-      const fullOtp = newOtp.join('');
-      if (fullOtp.length === 4) {
-        handleVerify(fullOtp);
-      }
-    }
+    // Not used anymore with single input
   };
 
   const handleKeyPress = (e: any, index: number) => {
-    // Handle backspace
-    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
+    // Handle backspace - just log for now
+    console.log('Key pressed:', e.nativeEvent.key, 'at index:', index);
+  };
+
+  // Fetch user data after successful login
+  const fetchUserData = async (userEmail: string) => {
+    try {
+      // First, find the user by email to get their ID
+      const usersResponse = await axios.get(`${API_URL}?email=${userEmail}`);
+      
+      if (usersResponse.data.success && usersResponse.data.data.length > 0) {
+        const user = usersResponse.data.data[0];
+        
+        // Update the context with user data
+        updateUserData({
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          phoneNumber: user.phoneNumber,
+          profilePicture: user.profilePicture,
+          balance: user.balance || 0,
+          totalRides: user.totalRides || 0,
+          starRating: user.starRating || 0,
+        });
+        
+        return user;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      return null;
     }
   };
 
   const handleVerify = async (otpCode?: string) => {
     const finalOtp = otpCode || otp.join('');
+    
+    console.log('OTP being sent:', finalOtp);
+    console.log('Email:', email);
     
     if (finalOtp.length !== 4) {
       setModalTitle('Validation Error');
@@ -98,16 +112,58 @@ export default function OTPScreen() {
     setIsLoading(true);
 
     try {
-      const response = await api.post(VERIFY_OTP_URL, {
+      // Use different endpoint for login vs registration
+      const endpoint = isLogin === 'true' ? '/login-verify' : '/verify-otp';
+      const response = await axios.post(`${API_URL}${endpoint}`, {
         email: email,
         otp: finalOtp
       });
 
       if (response.data.success) {
-        setModalTitle('Success');
-        setModalMessage('Registration successful! Welcome to Vaya.');
-        setIsSuccess(true);
-        setModalVisible(true);
+        // Save token to storage
+        if (response.data.token) {
+          await authStorage.setToken(response.data.token);
+        }
+
+        // If this is a login flow, use user data from response directly
+        if (isLogin === 'true' && response.data.data) {
+          const user = response.data.data;
+          
+          // Update the context with user data
+          updateUserData({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            phoneNumber: user.phoneNumber,
+            profilePicture: user.profilePicture,
+            balance: user.balance || 0,
+            totalRides: user.totalRides || 0,
+            starRating: user.starRating || 0,
+          });
+          
+          setModalTitle('Success');
+          setModalMessage('Login successful! Welcome back.');
+          setIsSuccess(true);
+          setModalVisible(true);
+        } else {
+          // For registration, fetch user data from response
+          if (response.data.data) {
+            updateUserData({
+              _id: response.data.data.id,
+              name: response.data.data.name,
+              email: response.data.data.email,
+              phoneNumber: response.data.data.phoneNumber,
+              profilePicture: null,
+              balance: 0,
+              totalRides: 0,
+              starRating: 0,
+            });
+          }
+          setModalTitle('Success');
+          setModalMessage('Registration successful! Welcome to Vaya.');
+          setIsSuccess(true);
+          setModalVisible(true);
+        }
       }
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || 'Invalid OTP. Please try again.';
@@ -117,7 +173,6 @@ export default function OTPScreen() {
       setModalVisible(true);
       // Clear OTP inputs
       setOtp(['', '', '', '']);
-      inputRefs.current[0]?.focus();
     } finally {
       setIsLoading(false);
     }
@@ -126,13 +181,33 @@ export default function OTPScreen() {
   const handleModalClose = () => {
     setModalVisible(false);
     if (isSuccess) {
+      // Navigate to home (tabs) after successful login/registration
       router.replace('/(tabs)');
     }
   };
 
   const handleResendOTP = async () => {
-    // Navigate back to register to request new OTP
-    router.back();
+    setIsLoading(true);
+    try {
+      const loginParam = isLogin === 'true' ? '/login' : '/register';
+      const response = await axios.post(`${API_URL}${loginParam}`, {
+        email: email,
+      });
+      
+      if (response.data.success) {
+        setModalTitle('OTP Sent');
+        setModalMessage('A new OTP has been sent to your email.');
+        setIsSuccess(true);
+        setModalVisible(true);
+      }
+    } catch (error: any) {
+      setModalTitle('Error');
+      setModalMessage(error.response?.data?.message || 'Failed to resend OTP.');
+      setIsSuccess(false);
+      setModalVisible(true);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -155,24 +230,29 @@ export default function OTPScreen() {
           </Text>
         </View>
 
-        {/* OTP Input */}
+        {/* OTP Input - Single field for 4 digits */}
         <View style={styles.otpContainer}>
-          <View style={styles.otpInputs}>
-            {otp.map((digit, index) => (
-              <TextInput
-                key={index}
-                ref={(ref) => { inputRefs.current[index] = ref as any; }}
-                style={[styles.otpInput, { fontSize: inputFontSize }]}
-                value={digit}
-                onChangeText={(value) => handleOtpChange(value.replace(/[^0-9]/g, ''), index)}
-                onKeyPress={(e) => handleKeyPress(e, index)}
-                keyboardType="number-pad"
-                maxLength={1}
-                selectTextOnFocus
-                editable={!isLoading}
-              />
-            ))}
-          </View>
+          <TextInput
+            style={[styles.otpInputSingle, { fontSize: inputFontSize }]}
+            value={otp.join('')}
+            onChangeText={(value) => {
+              // Only keep numeric characters and max 4 digits
+              const numericValue = value.replace(/[^0-9]/g, '').slice(0, 4);
+              const newOtp = numericValue.split('').concat(['', '', '', '']).slice(0, 4);
+              setOtp(newOtp);
+              
+              // Auto-submit when 4 digits are entered
+              if (numericValue.length === 4) {
+                handleVerify(numericValue);
+              }
+            }}
+            keyboardType="number-pad"
+            maxLength={4}
+            selectTextOnFocus
+            editable={!isLoading}
+            placeholder="----"
+            placeholderTextColor="#ccc"
+          />
         </View>
 
         {/* Verify Button */}
@@ -194,7 +274,7 @@ export default function OTPScreen() {
           <Text style={[styles.footerText, { fontSize: subtitleFontSize * 0.9 }]}>
             Did not receive the code?
           </Text>
-          <TouchableOpacity onPress={handleResendOTP}>
+          <TouchableOpacity onPress={handleResendOTP} disabled={isLoading}>
             <Text style={[styles.resendLink, { fontSize: subtitleFontSize * 0.9 }]}> Resend</Text>
           </TouchableOpacity>
         </View>
@@ -205,7 +285,7 @@ export default function OTPScreen() {
           onPress={() => router.back()}
         >
           <Text style={[styles.backText, { fontSize: subtitleFontSize * 0.9 }]}>
-            ← Back to Registration
+            ← Back
           </Text>
         </TouchableOpacity>
       </View>
@@ -300,6 +380,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
     backgroundColor: '#f9f9f9',
+  },
+  otpInputSingle: {
+    width: 200,
+    height: 70,
+    borderWidth: 2,
+    borderColor: '#FF6B00',
+    borderRadius: 12,
+    textAlign: 'center',
+    fontWeight: 'bold',
+    fontSize: 32,
+    color: '#333',
+    backgroundColor: '#f9f9f9',
+    letterSpacing: 16,
   },
   button: {
     backgroundColor: '#FF6B00',
