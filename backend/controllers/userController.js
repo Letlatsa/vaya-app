@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const TempUser = require('../models/TempUser');
 const { sendOTPEmail } = require('../services/emailService');
+const { generateToken } = require('../middleware/authMiddleware');
 
 // Generate a 4-digit OTP
 const generateOTP = () => {
@@ -22,32 +23,61 @@ const sendOTP = async (req, res) => {
       });
     }
 
-    // Check if user already exists in permanent collection
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid email address'
+      });
+    }
+
+    // Validate phone number format
+    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+    const cleanPhone = phoneNumber.replace(/\s/g, '');
+    if (!phoneRegex.test(cleanPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid phone number'
+      });
+    }
+
+    // Check if user already exists in permanent collection (DUPLICATE CHECK)
     const existingUser = await User.findOne({ 
-      $or: [{ email }, { phoneNumber }]
+      $or: [{ email: email.toLowerCase() }, { phoneNumber: cleanPhone }]
     });
     
     if (existingUser) {
+      const field = existingUser.email === email.toLowerCase() ? 'email' : 'phone number';
       return res.status(400).json({
         success: false,
-        message: 'User with this email or phone number already exists'
+        message: `User with this ${field} already exists`
       });
     }
 
     // Delete any existing temp user with same email
-    await TempUser.deleteMany({ email });
+    await TempUser.deleteMany({ email: email.toLowerCase() });
 
     // Generate OTP
     const otp = generateOTP();
     
-    // Log OTP for development testing
-    console.log('📱 OTP for', email, ':', otp);
+    // Log OTP for development testing - VERY IMPORTANT FOR TESTING
+    console.log('');
+    console.log('═══════════════════════════════════════════════════');
+    console.log('🔐 DEVELOPMENT MODE - REGISTRATION OTP');
+    console.log('═══════════════════════════════════════════════════');
+    console.log(`📧 Email: ${email}`);
+    console.log(`👤 Name: ${name}`);
+    console.log(`🔢 OTP Code: ${otp}`);
+    console.log('⏰ Valid for 5 minutes');
+    console.log('═══════════════════════════════════════════════════');
+    console.log('');
 
     // Save to TempUser collection
     const tempUser = new TempUser({
       name,
-      email,
-      phoneNumber,
+      email: email.toLowerCase(),
+      phoneNumber: cleanPhone,
       otp
     });
 
@@ -58,12 +88,15 @@ const sendOTP = async (req, res) => {
 
     if (!emailResult.success) {
       console.error('Failed to send email:', emailResult.error);
-      // Still return success since we saved the OTP for testing
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send verification email'
+      });
     }
 
     res.status(200).json({
       success: true,
-      message: 'OTP sent to your email',
+      message: 'OTP sent to your email for verification',
       // Remove this in production - for testing only
       devOTP: otp
     });
@@ -93,12 +126,31 @@ const verifyOTP = async (req, res) => {
     }
 
     // Find temp user
-    const tempUser = await TempUser.findOne({ email, otp });
+    const tempUser = await TempUser.findOne({ 
+      email: email.toLowerCase(), 
+      otp: otp 
+    });
 
     if (!tempUser) {
       return res.status(400).json({
         success: false,
         message: 'Invalid or expired OTP'
+      });
+    }
+
+    // Final duplicate check before creating user
+    const existingUser = await User.findOne({
+      $or: [
+        { email: tempUser.email },
+        { phoneNumber: tempUser.phoneNumber }
+      ]
+    });
+
+    if (existingUser) {
+      await TempUser.deleteOne({ _id: tempUser._id });
+      return res.status(400).json({
+        success: false,
+        message: 'User already exists with this email or phone number'
       });
     }
 
@@ -114,6 +166,9 @@ const verifyOTP = async (req, res) => {
     // Delete temp user
     await TempUser.deleteOne({ _id: tempUser._id });
 
+    // Generate JWT token
+    const token = generateToken(newUser);
+
     console.log('✅ User registered successfully:', {
       id: newUser._id,
       name: newUser.name,
@@ -124,6 +179,7 @@ const verifyOTP = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Registration successful',
+      token: token,
       data: {
         id: newUser._id,
         name: newUser.name,
@@ -144,6 +200,55 @@ const verifyOTP = async (req, res) => {
       });
     }
 
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+// @desc    Resend OTP
+// @route   POST /api/users/resend-otp
+// @access  Public
+const resendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide email'
+      });
+    }
+
+    // Find existing temp user
+    const tempUser = await TempUser.findOne({ email: email.toLowerCase() });
+
+    if (!tempUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'No pending registration found with this email'
+      });
+    }
+
+    // Generate new OTP
+    const otp = generateOTP();
+    tempUser.otp = otp;
+    await tempUser.save();
+
+    // Send new OTP via email
+    await sendOTPEmail(email, otp, tempUser.name);
+
+    console.log('📧 New OTP for', email, ':', otp);
+
+    res.status(200).json({
+      success: true,
+      message: 'New OTP sent to your email',
+      devOTP: otp
+    });
+
+  } catch (error) {
+    console.error('Resend OTP Error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error'
@@ -202,6 +307,7 @@ const getUserById = async (req, res) => {
 module.exports = {
   sendOTP,
   verifyOTP,
+  resendOTP,
   getAllUsers,
   getUserById
 };

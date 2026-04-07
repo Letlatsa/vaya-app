@@ -83,4 +83,68 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// GET /api/user/:id - Get user profile
+router.get('/user/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: user
+    });
+  } catch (error) {
+    console.error('Get User Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching user'
+    });
+  }
+});
+
+// PATCH /api/user/profile-picture - Update profile picture
+router.patch('/user/profile-picture', async (req, res) => {
+  try {
+    const { userId, profilePicture } = req.body;
+
+    if (!userId || !profilePicture) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID and profile picture are required'
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { profilePicture: profilePicture },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile picture updated successfully',
+      data: user
+    });
+  } catch (error) {
+    console.error('Update Profile Picture Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating profile picture'
+    });
+  }
+});
+
 module.exports = router;

@@ -33,6 +33,24 @@ const userSchema = new mongoose.Schema({
     enum: ['user', 'driver'],
     default: 'user'
   },
+  profilePicture: {
+    type: String,
+    default: null
+  },
+  balance: {
+    type: Number,
+    default: 0
+  },
+  starRating: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5
+  },
+  totalRides: {
+    type: Number,
+    default: 0
+  },
   createdAt: {
     type: Date,
     default: Date.now
