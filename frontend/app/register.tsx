@@ -11,108 +11,72 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
-  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import api, { API_ENDPOINTS } from '@/constants/apiConfig';
 
-// API URL from config
-const REGISTER_ENDPOINT = API_ENDPOINTS.REGISTER;
-
 export default function RegisterScreen() {
   const router = useRouter();
-  const { width, height } = useWindowDimensions();
-  
-  // Responsive sizes based on screen dimensions
-  const logoSize = Math.min(width, height) * 0.2;
-  const titleFontSize = Math.min(width, height) * 0.045;
-  const subtitleFontSize = Math.min(width, height) * 0.025;
-  const labelFontSize = Math.min(width, height) * 0.018;
-  const inputFontSize = Math.min(width, height) * 0.02;
-  const buttonFontSize = Math.min(width, height) * 0.02;
-  const paddingHorizontal = width * 0.08;
-  const paddingVertical = height * 0.03;
-  
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
-  // Modal state
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  const [errors, setErrors] = useState({ name: '', email: '', phone: '' });
+
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalMessage, setModalMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const validateInputs = () => {
-    if (!name.trim()) {
-      setModalTitle('Validation Error');
-      setModalMessage('Please enter your name');
-      setIsSuccess(false);
-      setModalVisible(true);
-      return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const validate = () => {
+    const newErrors = { name: '', email: '', phone: '' };
+    let valid = true;
+
+    if (!name.trim() || name.trim().length < 2) {
+      newErrors.name = 'Enter a valid full name (min 2 characters)';
+      valid = false;
     }
-    if (name.trim().length < 2) {
-      setModalTitle('Validation Error');
-      setModalMessage('Name must be at least 2 characters');
-      setIsSuccess(false);
-      setModalVisible(true);
-      return false;
-    }
-    if (!email.trim()) {
-      setModalTitle('Validation Error');
-      setModalMessage('Please enter your email address');
-      setIsSuccess(false);
-      setModalVisible(true);
-      return false;
-    }
-    // Simple email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      setModalTitle('Validation Error');
-      setModalMessage('Please enter a valid email address');
-      setIsSuccess(false);
-      setModalVisible(true);
-      return false;
+    if (!email.trim() || !emailRegex.test(email.trim())) {
+      newErrors.email = 'Enter a valid email address';
+      valid = false;
     }
     if (!phoneNumber.trim()) {
-      setModalTitle('Validation Error');
-      setModalMessage('Please enter your phone number');
-      setIsSuccess(false);
-      setModalVisible(true);
-      return false;
+      newErrors.phone = 'Enter your phone number';
+      valid = false;
     }
-    return true;
+
+    setErrors(newErrors);
+    return valid;
   };
 
   const handleSendOTP = async () => {
-    if (!validateInputs()) return;
-
+    if (!validate()) return;
     setIsLoading(true);
-
     try {
-      const response = await api.post(REGISTER_ENDPOINT, {
+      const response = await api.post(API_ENDPOINTS.REGISTER, {
         name: name.trim(),
         email: email.trim(),
         phoneNumber: phoneNumber.trim(),
       });
 
       if (response.data.success) {
-        setModalTitle('OTP Sent');
-        setModalMessage('Please check your email for the verification code.');
+        setModalTitle('OTP Sent ✓');
+        setModalMessage('A verification code has been sent to your email.');
         setIsSuccess(true);
         setModalVisible(true);
-        
-        // Navigate to OTP screen after modal is dismissed
         setTimeout(() => {
           setModalVisible(false);
           router.replace({ pathname: '/verify-otp' as any, params: { email: email.trim() } });
         }, 2000);
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to send OTP. Please try again.';
-      setModalTitle('Error');
-      setModalMessage(errorMessage);
+      setModalTitle('Registration Failed');
+      setModalMessage(error.response?.data?.message || 'Failed to send OTP. Please try again.');
       setIsSuccess(false);
       setModalVisible(true);
     } finally {
@@ -120,126 +84,114 @@ export default function RegisterScreen() {
     }
   };
 
-  const handleModalClose = () => {
-    setModalVisible(false);
-  };
+  const inputStyle = (field: string) => [
+    styles.input,
+    focusedField === field && styles.inputFocused,
+  ];
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingHorizontal, paddingVertical: paddingVertical * 1.5 }
-        ]}
-        keyboardShouldPersistTaps="handled"
-      >
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <View style={styles.card}>
+
+        {/* Header */}
         <View style={styles.header}>
-          <Image
-            source={require('@/assets/images/Logo.jpeg')}
-            style={[styles.logo, { width: logoSize, height: logoSize }]}
-            resizeMode="contain"
-          />
-          <Text style={[styles.subtitle, { fontSize: subtitleFontSize }]}>Create your account</Text>
+          <Image source={require('@/assets/images/Logo.jpeg')} style={styles.logo} resizeMode="contain" />
+          <Text style={styles.title}>Create Account</Text>
+          <Text style={styles.subtitle}>Sign up to get started with Vaya</Text>
         </View>
 
+        {/* Form */}
         <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { fontSize: labelFontSize }]}>Full Name</Text>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Full Name</Text>
             <TextInput
-              style={[styles.input, { fontSize: inputFontSize }]}
-              placeholder="Enter your full name"
-              placeholderTextColor="#999"
+              style={inputStyle('name')}
+              placeholder="John Doe"
+              placeholderTextColor="#aaa"
               value={name}
-              onChangeText={setName}
+              onChangeText={(v) => { setName(v); setErrors(e => ({ ...e, name: '' })); }}
+              onFocus={() => setFocusedField('name')}
+              onBlur={() => setFocusedField(null)}
               autoCapitalize="words"
               autoCorrect={false}
               editable={!isLoading}
             />
+            {errors.name ? <Text style={styles.errorText}>{errors.name}</Text> : null}
           </View>
 
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { fontSize: labelFontSize }]}>Email Address</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email Address</Text>
             <TextInput
-              style={[styles.input, { fontSize: inputFontSize }]}
-              placeholder="Enter your email address"
-              placeholderTextColor="#999"
+              style={inputStyle('email')}
+              placeholder="you@example.com"
+              placeholderTextColor="#aaa"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(v) => { setEmail(v); setErrors(e => ({ ...e, email: '' })); }}
+              onFocus={() => setFocusedField('email')}
+              onBlur={() => setFocusedField(null)}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
               editable={!isLoading}
             />
+            {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
           </View>
 
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { fontSize: labelFontSize }]}>Phone Number</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Phone Number</Text>
             <TextInput
-              style={[styles.input, { fontSize: inputFontSize }]}
-              placeholder="Enter your phone number"
-              placeholderTextColor="#999"
+              style={inputStyle('phone')}
+              placeholder="+266 5000 0000"
+              placeholderTextColor="#aaa"
               value={phoneNumber}
-              onChangeText={setPhoneNumber}
+              onChangeText={(v) => { setPhoneNumber(v); setErrors(e => ({ ...e, phone: '' })); }}
+              onFocus={() => setFocusedField('phone')}
+              onBlur={() => setFocusedField(null)}
               keyboardType="phone-pad"
-              autoCorrect={false}
               editable={!isLoading}
             />
+            {errors.phone ? <Text style={styles.errorText}>{errors.phone}</Text> : null}
           </View>
 
           <TouchableOpacity
             style={[styles.button, isLoading && styles.buttonDisabled]}
             onPress={handleSendOTP}
             disabled={isLoading}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={[styles.buttonText, { fontSize: buttonFontSize }]}>Send OTP</Text>
-            )}
+            {isLoading
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.buttonText}>Send OTP</Text>
+            }
           </TouchableOpacity>
 
           <View style={styles.footer}>
-            <Text style={[styles.footerText, { fontSize: labelFontSize * 0.9 }]}>Already have an account?</Text>
-            <TouchableOpacity disabled={isLoading}>
-              <Text style={[styles.loginLink, { fontSize: labelFontSize * 0.9 }]}> Sign In</Text>
+            <Text style={styles.footerText}>Already have an account?</Text>
+            <TouchableOpacity onPress={() => router.push('/login' as any)} disabled={isLoading}>
+              <Text style={styles.loginLink}> Sign In</Text>
             </TouchableOpacity>
           </View>
+
+        </View>
         </View>
       </ScrollView>
 
-      {/* Custom Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
+      {/* Modal */}
+      <Modal animationType="fade" transparent visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { width: modalWidth, maxWidth: modalMaxWidth }]}>
-            <View style={[
-              styles.modalIconContainer,
-              { width: modalIconSize, height: modalIconSize, borderRadius: modalIconSize / 2 },
-              isSuccess ? styles.modalIconSuccess : styles.modalIconError
-            ]}>
-              <Text style={[styles.modalIcon, { fontSize: modalIconSize * 0.5 }]}>{isSuccess ? '✓' : '✕'}</Text>
+          <View style={styles.modalContent}>
+            <View style={[styles.modalIconContainer, isSuccess ? styles.iconSuccess : styles.iconError]}>
+              <Text style={styles.modalIcon}>{isSuccess ? '✓' : '✕'}</Text>
             </View>
-            <Text style={[styles.modalTitle, { fontSize: modalFontSize }]}>{modalTitle}</Text>
-            <Text style={[styles.modalMessage, { fontSize: modalMessageSize }]}>{modalMessage}</Text>
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
+            <Text style={styles.modalMessage}>{modalMessage}</Text>
             <TouchableOpacity
-              style={[
-                styles.modalButton,
-                { paddingVertical: height * 0.02, paddingHorizontal: width * 0.1, borderRadius: width * 0.08 },
-                isSuccess ? styles.modalButtonSuccess : styles.modalButtonError
-              ]}
-              onPress={handleModalClose}
+              style={[styles.modalButton, isSuccess ? styles.modalButtonSuccess : styles.modalButtonError]}
+              onPress={() => setModalVisible(false)}
             >
-              <Text style={[styles.modalButtonText, { fontSize: modalMessageSize }]}>
-                {isSuccess ? 'OK' : 'Try Again'}
-              </Text>
+              <Text style={styles.modalButtonText}>{isSuccess ? 'OK' : 'Try Again'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -248,128 +200,64 @@ export default function RegisterScreen() {
   );
 }
 
-// Modal responsive sizes
-const modalIconSize = Math.min(350, 70);
-const modalWidth = '85%';
-const modalMaxWidth = 350;
-const modalFontSize = 22;
-const modalMessageSize = 16;
+const ORANGE = '#FF6B00';
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  logo: {
-    marginBottom: 10,
-  },
-  subtitle: {
-    color: '#666',
-  },
-  form: {
-    width: '100%',
-  },
-  inputContainer: {
-    marginBottom: 20,
-  },
-  label: {
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
+  container: { flex: 1, backgroundColor: '#f0f0f0' },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40, paddingHorizontal: 16 },
+  card: { width: '100%', maxWidth: 480, backgroundColor: '#fff', borderRadius: 16, padding: 32, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
+
+  header: { alignItems: 'center', marginBottom: 36 },
+  logo: { width: 80, height: 80, marginBottom: 16, borderRadius: 16 },
+  title: { fontSize: 26, fontWeight: '700', color: '#1a1a1a', marginBottom: 6 },
+  subtitle: { fontSize: 14, color: '#888' },
+
+  form: { width: '100%' },
+  inputGroup: { marginBottom: 18 },
+  label: { fontSize: 13, fontWeight: '600', color: '#444', marginBottom: 6 },
   input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 14,
-    color: '#333',
-    backgroundColor: '#f9f9f9',
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 15,
+    color: '#1a1a1a',
+    backgroundColor: '#fafafa',
   },
+  inputFocused: { borderColor: ORANGE, backgroundColor: '#fff' },
+  errorText: { fontSize: 12, color: '#e53935', marginTop: 4, marginLeft: 2 },
+
   button: {
-    backgroundColor: '#FF6B00',
-    borderRadius: 8,
-    padding: 16,
+    backgroundColor: ORANGE,
+    borderRadius: 10,
+    paddingVertical: 15,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 8,
+    shadowColor: ORANGE,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  buttonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 24,
-  },
-  footerText: {
-    color: '#666',
-  },
-  loginLink: {
-    color: '#FF6B00',
-    fontWeight: 'bold',
-  },
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: '6%',
-    alignItems: 'center',
-  },
-  modalIconContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: '5%',
-  },
-  modalIconSuccess: {
-    backgroundColor: '#4CAF50',
-  },
-  modalIconError: {
-    backgroundColor: '#f44336',
-  },
-  modalIcon: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  modalTitle: {
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: '2.5%',
-    textAlign: 'center',
-  },
-  modalMessage: {
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: '6%',
-  },
-  modalButton: {
-    alignItems: 'center',
-  },
-  modalButtonSuccess: {
-    backgroundColor: '#FF6B00',
-  },
-  modalButtonError: {
-    backgroundColor: '#f44336',
-  },
-  modalButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
+  buttonDisabled: { backgroundColor: '#ccc', shadowOpacity: 0 },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
+  footerText: { fontSize: 14, color: '#888' },
+  loginLink: { fontSize: 14, color: ORANGE, fontWeight: '700' },
+
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 28, alignItems: 'center', width: '82%' },
+  modalIconContainer: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  iconSuccess: { backgroundColor: '#4CAF50' },
+  iconError: { backgroundColor: '#e53935' },
+  modalIcon: { color: '#fff', fontSize: 28, fontWeight: 'bold' },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: '#1a1a1a', marginBottom: 8, textAlign: 'center' },
+  modalMessage: { fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 24, lineHeight: 20 },
+  modalButton: { paddingVertical: 12, paddingHorizontal: 40, borderRadius: 10 },
+  modalButtonSuccess: { backgroundColor: ORANGE },
+  modalButtonError: { backgroundColor: '#e53935' },
+  modalButtonText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });
