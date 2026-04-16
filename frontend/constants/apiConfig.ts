@@ -26,7 +26,10 @@ export const API_ENDPOINTS = {
   // Trip endpoints
   TRIPS: '/api/trips',
   CREATE_TRIP: '/api/trips',
-  GET_TRIP: '/api/trips/:id',
+  PENDING_TRIPS: '/api/trips/pending',
+  TRIP_STATUS: '/api/trips/:id/status',
+  ACCEPT_TRIP: '/api/trips/:id/accept',
+  CANCEL_TRIP: '/api/trips/:id/cancel',
 };
 
 // Create axios instance

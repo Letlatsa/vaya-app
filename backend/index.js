@@ -3,12 +3,16 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const userApi = require('./api/userApi');
 const driverApi = require('./api/driverApi');
+const tripApi = require('./api/tripApi');
 require('dotenv').config();
 
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:8081', 'http://localhost:19006', 'http://localhost:3000'],
+  credentials: true,
+}));
 app.use(express.json());
 
 // Debug middleware - log all requests
@@ -20,9 +24,10 @@ app.use((req, res, next) => {
 // API Routes
 app.use('/api/users', userApi);
 app.use('/api/drivers', driverApi);
+app.use('/api/trips', tripApi);
 
 // Debug: verify routes are loaded
-console.log('✅ Routes loaded: /api/users, /api/drivers');
+console.log('✅ Routes loaded: /api/users, /api/drivers, /api/trips');
 
 // Log available routes on startup
 console.log('');
@@ -38,6 +43,11 @@ console.log('  GET  /api/users/:id - Get user by ID');
 console.log('  POST /api/drivers/register - Register driver application');
 console.log('  GET  /api/drivers - Get all drivers');
 console.log('  GET  /api/drivers/:id - Get driver by ID');
+console.log('  POST /api/trips - Book a ride');
+console.log('  GET  /api/trips/pending - Get pending trips (drivers)');
+console.log('  PATCH /api/trips/:id/accept - Accept a trip (driver)');
+console.log('  GET  /api/trips/:id/status - Poll trip status (rider)');
+console.log('  PATCH /api/trips/:id/cancel - Cancel a trip (rider)');
 console.log('═══════════════════════════════════════════════════');
 console.log('');
 

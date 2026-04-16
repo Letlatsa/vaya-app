@@ -44,6 +44,11 @@ const tripSchema = new mongoose.Schema({
     required: [true, 'Price is required'],
     min: [0, 'Price cannot be negative']
   },
+  rideType: {
+    type: String,
+    enum: ['Standard', 'Comfort', 'XL'],
+    default: 'Standard'
+  },
   status: {
     type: String,
     enum: ['pending', 'active', 'completed', 'cancelled'],
