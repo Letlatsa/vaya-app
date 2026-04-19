@@ -96,6 +96,9 @@ export default function RegisterScreen() {
 
         {/* Header */}
         <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.replace('/' as any)} style={styles.backBtn}>
+            <Text style={styles.backBtnText}>← Back</Text>
+          </TouchableOpacity>
           <Image source={require('@/assets/images/Logo.jpeg')} style={styles.logo} resizeMode="contain" />
           <Text style={styles.title}>Create Account</Text>
           <Text style={styles.subtitle}>Sign up to get started with Vaya</Text>
@@ -208,6 +211,8 @@ const styles = StyleSheet.create({
   card: { width: '100%', maxWidth: 480, backgroundColor: '#fff', borderRadius: 16, padding: 32, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
 
   header: { alignItems: 'center', marginBottom: 36 },
+  backBtn: { alignSelf: 'flex-start', marginBottom: 8 },
+  backBtnText: { fontSize: 14, color: ORANGE, fontWeight: '600' },
   logo: { width: 80, height: 80, marginBottom: 16, borderRadius: 16 },
   title: { fontSize: 26, fontWeight: '700', color: '#1a1a1a', marginBottom: 6 },
   subtitle: { fontSize: 14, color: '#888' },
