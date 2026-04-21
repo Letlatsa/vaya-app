@@ -1,13 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import MapView, { Marker, Callout, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
+import api from '@/constants/apiConfig';
 
 export interface MapPoint { lat: number; lng: number; label: string }
+export interface RouteSummary { distance: number; duration: number; coords: LatLng[] }
 export interface RideMapProps {
   onPickupSelect: (point: MapPoint) => void;
   onDestinationSelect: (point: MapPoint) => void;
+  onRouteInfoChange?: (route: RouteSummary | null) => void;
   pickupMode: boolean;
+  pickup?: MapPoint | null;
+  destination?: MapPoint | null;
 }
 
 type LatLng = { latitude: number; longitude: number };
@@ -49,9 +54,9 @@ async function fetchRoutes(pickup: MapPoint, dest: MapPoint): Promise<Route[]> {
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${pickup.lng},${pickup.lat};${dest.lng},${dest.lat}?alternatives=2&geometries=polyline&overview=full`;
     const res = await fetch(url);
-    const data = await res.json();
+    const data = (await res.json()) as any;
     if (data.routes?.length) {
-      return data.routes.map((r: any) => ({
+      return (data.routes as any[]).map((r: any) => ({
         coords: decodePolyline(r.geometry),
         distance: r.distance,
         duration: r.duration,
@@ -61,16 +66,22 @@ async function fetchRoutes(pickup: MapPoint, dest: MapPoint): Promise<Route[]> {
   return [];
 }
 
-export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMode }: RideMapProps) {
-  const [region, setRegion] = useState({
-    latitude: -29.3167, longitude: 27.4833,
-    latitudeDelta: 0.05, longitudeDelta: 0.05,
-  });
-  const [pickup, setPickup]           = useState<MapPoint | null>(null);
-  const [destination, setDestination] = useState<MapPoint | null>(null);
-  const [routes, setRoutes]           = useState<Route[]>([]);
+const centerRegion = { latitude: -29.3167, longitude: 27.4833, latitudeDelta: 0.05, longitudeDelta: 0.05 };
+
+export default function RideMap({
+  onPickupSelect,
+  onDestinationSelect,
+  onRouteInfoChange,
+  pickupMode,
+  pickup: externalPickup,
+  destination: externalDestination,
+}: RideMapProps) {
+  const [region, setRegion] = useState(centerRegion);
+  const [pickup, setPickup] = useState<MapPoint | null>(externalPickup || null);
+  const [destination, setDestination] = useState<MapPoint | null>(externalDestination || null);
+  const [routes, setRoutes] = useState<Route[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [loading, setLoading]         = useState(true);
+  const [loading, setLoading] = useState(true);
   const [routeLoading, setRouteLoading] = useState(false);
 
   useEffect(() => {
@@ -84,6 +95,43 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
     })();
   }, []);
 
+  useEffect(() => {
+    if (externalPickup) {
+      setPickup(externalPickup);
+      if (externalDestination) {
+        loadRoutes(externalPickup, externalDestination);
+      } else {
+        setRoutes([]);
+      }
+      setRegion(prev => ({ ...prev, latitude: externalPickup.lat, longitude: externalPickup.lng }));
+    }
+  }, [externalPickup]);
+
+  useEffect(() => {
+    if (externalDestination) {
+      setDestination(externalDestination);
+      if (externalPickup) {
+        loadRoutes(externalPickup, externalDestination);
+      } else {
+        setRoutes([]);
+      }
+      setRegion(prev => ({ ...prev, latitude: externalDestination.lat, longitude: externalDestination.lng }));
+    }
+  }, [externalDestination]);
+
+  useEffect(() => {
+    if (pickup && destination) {
+      const latDelta = Math.abs(pickup.lat - destination.lat) * 2.2 + 0.01;
+      const lngDelta = Math.abs(pickup.lng - destination.lng) * 2.2 + 0.01;
+      setRegion({
+        latitude: (pickup.lat + destination.lat) / 2,
+        longitude: (pickup.lng + destination.lng) / 2,
+        latitudeDelta: Math.min(Math.max(latDelta, 0.03), 0.7),
+        longitudeDelta: Math.min(Math.max(lngDelta, 0.03), 0.7),
+      });
+    }
+  }, [pickup, destination]);
+
   const loadRoutes = async (p: MapPoint, d: MapPoint) => {
     setRouteLoading(true);
     setRoutes([]);
@@ -91,6 +139,7 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
     const result = await fetchRoutes(p, d);
     setRoutes(result);
     setRouteLoading(false);
+    onRouteInfoChange?.(result[0] ? { distance: result[0].distance, duration: result[0].duration, coords: result[0].coords } : null);
   };
 
   const handlePress = async (e: any) => {
@@ -105,6 +154,21 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
     } else {
       setDestination(point);
       setRoutes([]);
+      onDestinationSelect(point);
+      if (pickup) loadRoutes(pickup, point);
+    }
+  };
+
+  const handleMarkerDrag = async (type: 'pickup' | 'destination', e: any) => {
+    const { latitude, longitude } = e.nativeEvent.coordinate;
+    const label = await reverseGeocode(latitude, longitude);
+    const point = { lat: latitude, lng: longitude, label };
+    if (type === 'pickup') {
+      setPickup(point);
+      onPickupSelect(point);
+      if (destination) loadRoutes(point, destination);
+    } else {
+      setDestination(point);
       onDestinationSelect(point);
       if (pickup) loadRoutes(pickup, point);
     }
@@ -147,7 +211,12 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
 
         {/* Pickup marker */}
         {pickup && (
-          <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} anchor={{ x: 0.5, y: 1 }}>
+          <Marker
+            coordinate={{ latitude: pickup.lat, longitude: pickup.lng }}
+            anchor={{ x: 0.5, y: 1 }}
+            draggable
+            onDragEnd={(e) => handleMarkerDrag('pickup', e)}
+          >
             <View style={styles.pin}>
               <View style={[styles.pinHead, { backgroundColor: ORANGE }]}>
                 <Text style={styles.pinEmoji}>📍</Text>
@@ -165,7 +234,12 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
 
         {/* Destination marker */}
         {destination && (
-          <Marker coordinate={{ latitude: destination.lat, longitude: destination.lng }} anchor={{ x: 0.5, y: 1 }}>
+          <Marker
+            coordinate={{ latitude: destination.lat, longitude: destination.lng }}
+            anchor={{ x: 0.5, y: 1 }}
+            draggable
+            onDragEnd={(e) => handleMarkerDrag('destination', e)}
+          >
             <View style={styles.pin}>
               <View style={[styles.pinHead, { backgroundColor: DARK }]}>
                 <Text style={styles.pinEmoji}>🏁</Text>
