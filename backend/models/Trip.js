@@ -39,6 +39,16 @@ const tripSchema = new mongoose.Schema({
       trim: true
     }
   },
+  distance: {
+    type: Number,
+    default: null,
+    min: [0, 'Distance cannot be negative']
+  },
+  estimatedTime: {
+    type: Number,
+    default: null,
+    min: [0, 'Estimated time cannot be negative']
+  },
   price: {
     type: Number,
     required: [true, 'Price is required'],

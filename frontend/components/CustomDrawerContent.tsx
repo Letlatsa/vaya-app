@@ -25,6 +25,9 @@ export default function CustomDrawerContent(props: CustomDrawerContentProps) {
   const navigateToProfile = () => router.push('/profile' as any);
   const navigateToHome = () => router.replace('/(tabs)' as any);
   const navigateToMyRides = () => router.push('/(tabs)/explore' as any);
+  const navigateToLocation = (label: string) => {
+    router.replace(`/(tabs)?location=${encodeURIComponent(label)}&target=pickup` as any);
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -87,6 +90,26 @@ export default function CustomDrawerContent(props: CustomDrawerContentProps) {
           <TouchableOpacity style={styles.menuItem}>
             <Text style={styles.menuIcon}>⚙️</Text>
             <Text style={styles.menuText}>Settings</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.savedHeader}>
+          <Text style={styles.savedTitle}>Saved locations</Text>
+        </View>
+        <View style={styles.savedLocations}>
+          <TouchableOpacity style={styles.savedItem} onPress={() => navigateToLocation('Home')}>
+            <View style={styles.savedIcon}><Text>🏡</Text></View>
+            <View style={styles.savedTextWrap}>
+              <Text style={styles.savedLabel}>Home</Text>
+              <Text style={styles.savedAddress}>Your home address</Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.savedItem} onPress={() => navigateToLocation('Office')}>
+            <View style={styles.savedIcon}><Text>🏢</Text></View>
+            <View style={styles.savedTextWrap}>
+              <Text style={styles.savedLabel}>Office</Text>
+              <Text style={styles.savedAddress}>Work or office location</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -186,6 +209,54 @@ const styles = StyleSheet.create({
   menuText: {
     fontSize: 15,
     color: '#333',
+  },
+  savedHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  savedTitle: {
+    fontSize: 12,
+    color: '#999',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontWeight: '700',
+  },
+  savedLocations: {
+    paddingHorizontal: 10,
+    marginBottom: 16,
+  },
+  savedItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: '#f7f7f7',
+    marginBottom: 10,
+  },
+  savedIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#ececec',
+  },
+  savedTextWrap: {
+    flex: 1,
+  },
+  savedLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  savedAddress: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 2,
   },
   footer: {
     padding: 16,

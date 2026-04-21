@@ -1,20 +1,35 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import * as Location from 'expo-location';
+import { API_BASE_URL } from '@/constants/apiConfig';
 
 export interface MapPoint { lat: number; lng: number; label: string }
 export interface RideMapProps {
   onPickupSelect: (point: MapPoint) => void;
   onDestinationSelect: (point: MapPoint) => void;
+  onRouteInfoChange?: (route: { distance: number; duration: number; coords: { latitude: number; longitude: number }[] } | null) => void;
   pickupMode: boolean;
+  pickup?: MapPoint | null;
+  destination?: MapPoint | null;
 }
 
-export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMode }: RideMapProps) {
+export default function RideMap({ onPickupSelect, onDestinationSelect, onRouteInfoChange, pickupMode, pickup, destination }: RideMapProps) {
   const [center, setCenter] = useState({ lat: -29.3167, lng: 27.4833 });
   const pickupModeRef = useRef(pickupMode);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => { pickupModeRef.current = pickupMode; }, [pickupMode]);
+
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow) {
+      if (pickup) {
+        iframeRef.current.contentWindow.postMessage(JSON.stringify({ type: 'setPickup', lat: pickup.lat, lng: pickup.lng, label: pickup.label }), '*');
+      }
+      if (destination) {
+        iframeRef.current.contentWindow.postMessage(JSON.stringify({ type: 'setDest', lat: destination.lat, lng: destination.lng, label: destination.label }), '*');
+      }
+    }
+  }, [pickup, destination]);
 
   useEffect(() => {
     (async () => {
@@ -47,11 +62,29 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
             onDestinationSelect(point);
           }
         }
+        if (data.type === 'routeInfo') {
+          onRouteInfoChange?.({
+            distance: data.distance,
+            duration: data.duration,
+            coords: data.coords,
+          });
+        }
+        if (data.type === 'markerDrag') {
+          const point: MapPoint = {
+            lat: data.lat, lng: data.lng,
+            label: data.label || `${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`,
+          };
+          if (data.markerType === 'pickup') {
+            onPickupSelect(point);
+          } else {
+            onDestinationSelect(point);
+          }
+        }
       } catch {}
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [onPickupSelect, onDestinationSelect]);
+  }, [onPickupSelect, onDestinationSelect, onRouteInfoChange]);
 
   const html = `<!DOCTYPE html>
 <html><head>
@@ -86,7 +119,7 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
 
   var pickupMarker=null, destMarker=null, pickupLabelM=null, destLabelM=null;
-  var routeLayers=[], pickupPt=null, destPt=null, selectedRouteIdx=0;
+  var routeLayers=[], routeData=[], pickupPt=null, destPt=null, selectedRouteIdx=0;
 
   var pickupIcon = L.divIcon({
     className:'',
@@ -144,11 +177,20 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
     document.querySelectorAll('.route-opt').forEach(function(el,i){
       el.classList.toggle('active',i===idx);
     });
+    if(routeData[idx]) {
+      var geometry = routeData[idx].geometry;
+      window.parent.postMessage(JSON.stringify({
+        type: 'routeInfo',
+        distance: routeData[idx].distance,
+        duration: routeData[idx].duration,
+        coords: decodePolyline(geometry).map(function(c){return { latitude: c[0], longitude: c[1] };})
+      }), '*');
+    }
   }
 
   function drawRoutes(routes){
     clearRoutes();
-    var colors=['#FF6B00','#90A4AE','#78909C'];
+    routeData = routes;
     var list=document.getElementById('route-list');
     routes.forEach(function(route,i){
       var coords=decodePolyline(route.geometry);
@@ -172,7 +214,16 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
     });
 
     document.getElementById('route-card').style.display='block';
-    var allCoords=routes[0]?decodePolyline(routes[0].geometry):[];
+    var selectedRoute = routes[0];
+    if (selectedRoute) {
+      window.parent.postMessage(JSON.stringify({
+        type: 'routeInfo',
+        distance: selectedRoute.distance,
+        duration: selectedRoute.duration,
+        coords: decodePolyline(selectedRoute.geometry).map(function(c){return { latitude: c[0], longitude: c[1] };})
+      }), '*');
+    }
+    var allCoords=selectedRoute?decodePolyline(selectedRoute.geometry):[];
     if(allCoords.length) map.fitBounds(L.polyline(allCoords).getBounds().pad(0.25));
   }
 
@@ -209,7 +260,18 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
         if(pickupMarker) map.removeLayer(pickupMarker);
         if(pickupLabelM) map.removeLayer(pickupLabelM);
         pickupPt={lat:d.lat,lng:d.lng};
-        pickupMarker=L.marker([d.lat,d.lng],{icon:pickupIcon,zIndexOffset:500}).addTo(map);
+        pickupMarker=L.marker([d.lat,d.lng],{icon:pickupIcon,zIndexOffset:500,draggable:true}).addTo(map);
+        pickupMarker.on('dragend',function(e){
+          var lat=e.target.getLatLng().lat,lng=e.target.getLatLng().lng;
+          fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lng)
+            .then(function(r){return r.json();})
+            .then(function(resp){
+              var label=resp.display_name?resp.display_name.split(',').slice(0,2).join(','):lat.toFixed(5)+', '+lng.toFixed(5);
+              window.parent.postMessage(JSON.stringify({type:'markerDrag',markerType:'pickup',lat:lat,lng:lng,label:label}),'*');
+            }).catch(function(){
+              window.parent.postMessage(JSON.stringify({type:'markerDrag',markerType:'pickup',lat:lat,lng:lng,label:lat.toFixed(5)+', '+lng.toFixed(5)}),'*');
+            });
+        });
         pickupLabelM=L.marker([d.lat,d.lng],{icon:makeLabelIcon('Pickup','#FF6B00'),zIndexOffset:1000}).addTo(map);
         clearRoutes();
         fetchRoutes();
@@ -218,7 +280,18 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
         if(destMarker) map.removeLayer(destMarker);
         if(destLabelM) map.removeLayer(destLabelM);
         destPt={lat:d.lat,lng:d.lng};
-        destMarker=L.marker([d.lat,d.lng],{icon:destIcon,zIndexOffset:500}).addTo(map);
+        destMarker=L.marker([d.lat,d.lng],{icon:destIcon,zIndexOffset:500,draggable:true}).addTo(map);
+        destMarker.on('dragend',function(e){
+          var lat=e.target.getLatLng().lat,lng=e.target.getLatLng().lng;
+          fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lng)
+            .then(function(r){return r.json();})
+            .then(function(resp){
+              var label=resp.display_name?resp.display_name.split(',').slice(0,2).join(','):lat.toFixed(5)+', '+lng.toFixed(5);
+              window.parent.postMessage(JSON.stringify({type:'markerDrag',markerType:'destination',lat:lat,lng:lng,label:label}),'*');
+            }).catch(function(){
+              window.parent.postMessage(JSON.stringify({type:'markerDrag',markerType:'destination',lat:lat,lng:lng,label:lat.toFixed(5)+', '+lng.toFixed(5)}),'*');
+            });
+        });
         destLabelM=L.marker([d.lat,d.lng],{icon:makeLabelIcon('Destination','#1A1A2E'),zIndexOffset:1000}).addTo(map);
         clearRoutes();
         fetchRoutes();
@@ -229,7 +302,16 @@ export default function RideMap({ onPickupSelect, onDestinationSelect, pickupMod
 
   return (
     <View style={styles.container}>
-      <iframe ref={iframeRef} srcDoc={html} style={{ width: '100%', height: '100%', border: 'none' }} title="map" />
+      <iframe
+        ref={iframeRef}
+        srcDoc={html}
+        style={{ width: '100%', height: '100%', border: 'none' }}
+        title="map"
+        onLoad={() => {
+          if (pickup) postToMap({ type: 'setPickup', lat: pickup.lat, lng: pickup.lng, label: pickup.label });
+          if (destination) postToMap({ type: 'setDest', lat: destination.lat, lng: destination.lng, label: destination.label });
+        }}
+      />
     </View>
   );
 }
