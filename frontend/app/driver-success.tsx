@@ -23,6 +23,10 @@ export default function DriverSuccessScreen() {
     router.replace('/login');
   };
 
+  const handleGoToDriverDashboard = () => {
+    router.replace('/driver-map' as any);
+  };
+
   return (
     <View style={[styles.container, { paddingHorizontal }]}>
       <View style={styles.content}>
@@ -44,10 +48,18 @@ export default function DriverSuccessScreen() {
         
         <TouchableOpacity
           style={styles.button}
+          onPress={handleGoToDriverDashboard}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.buttonText, { fontSize: buttonFontSize }]}>Go to Driver Dashboard</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: '#f0f0f0', marginTop: 12 }]}
           onPress={handleLoginAsClient}
           activeOpacity={0.8}
         >
-          <Text style={[styles.buttonText, { fontSize: buttonFontSize }]}>Log in as a Client</Text>
+          <Text style={[styles.buttonText, { fontSize: buttonFontSize, color: '#666' }]}>Log in as a Client</Text>
         </TouchableOpacity>
       </View>
     </View>

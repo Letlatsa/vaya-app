@@ -138,6 +138,7 @@ export default function RootLayout() {
             <Stack.Screen name="driver-license" options={{ headerShown: false }} />
             <Stack.Screen name="driver-car" options={{ headerShown: false }} />
             <Stack.Screen name="driver-success" options={{ headerShown: false }} />
+            <Stack.Screen name="driver-map" options={{ headerShown: false }} />
           </Stack>
         </ThemeProvider>
         <StatusBar style="auto" />
