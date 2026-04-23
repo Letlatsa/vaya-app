@@ -12,14 +12,13 @@ import api from '@/constants/apiConfig';
 const ORANGE = '#FF6B00';
 const DARK = '#1A1A2E';
 
-type SettingItem = { icon: string; label: string };
 
-const SETTINGS: SettingItem[] = [
+const SETTINGS = [
   { icon: '🔔', label: 'Notification Preferences' },
   { icon: '💳', label: 'Payment Methods' },
   { icon: '🛡️', label: 'Privacy & Security' },
   { icon: '❓', label: 'Help & Support' },
-  { icon: '🚙', label: 'Become a Driver' },
+  { icon: '🚙', label: 'Driver Dashboard' },
 ];
 
 export default function ProfileScreen() {
@@ -62,9 +61,7 @@ export default function ProfileScreen() {
   };
 
   const handleSettingPress = (label: string) => {
-    if (label === 'Become a Driver') {
-      router.push('/driver-register' as any);
-    }
+    if (label === 'Driver Dashboard') router.push('/driver-map' as any);
   };
 
   const handleLogout = () => {
@@ -140,8 +137,13 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settings</Text>
           {SETTINGS.map((item) => (
-            <TouchableOpacity key={item.label} style={styles.settingRow} onPress={() => handleSettingPress(item.label)} activeOpacity={0.7}>
-              <Text style={styles.settingIcon}>{item.icon}</Text>
+            <TouchableOpacity
+              key={item.label}
+              style={styles.settingRow}
+              onPress={() => handleSettingPress(item.label)}
+              activeOpacity={0.7}
+            >
+             <Text style={styles.settingIcon}>{item.icon}</Text>
               <Text style={styles.settingLabel}>{item.label}</Text>
               <Text style={styles.settingArrow}>›</Text>
             </TouchableOpacity>
@@ -201,10 +203,17 @@ const styles = StyleSheet.create({
   topUpText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 
   section: { paddingHorizontal: 16, marginBottom: 12 },
-  sectionTitle: { fontSize: 12, fontWeight: '700', color: '#999', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10, marginLeft: 4 },
+  sectionTitle: {
+    fontSize: 12, fontWeight: '700', color: '#999',
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginBottom: 10, marginLeft: 4,
+  },
 
   infoCard: { backgroundColor: '#fff', borderRadius: 16, paddingHorizontal: 16 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14 },
+  infoRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', paddingVertical: 14,
+  },
   infoLabel: { fontSize: 14, color: '#888' },
   infoValue: { fontSize: 14, fontWeight: '600', color: DARK, maxWidth: '55%', textAlign: 'right' },
   divider: { height: 1, backgroundColor: '#f0f0f0' },
