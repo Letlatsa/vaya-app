@@ -3,12 +3,16 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const userApi = require('./api/userApi');
 const driverApi = require('./api/driverApi');
+const tripApi = require('./api/tripApi');
 require('dotenv').config();
 
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:8081', 'http://localhost:19006', 'http://localhost:3000'],
+  credentials: true,
+}));
 app.use(express.json());
 
 // Debug middleware - log all requests
@@ -20,9 +24,10 @@ app.use((req, res, next) => {
 // API Routes
 app.use('/api/users', userApi);
 app.use('/api/drivers', driverApi);
+app.use('/api/trips', tripApi);
 
 // Debug: verify routes are loaded
-console.log('✅ Routes loaded: /api/users, /api/drivers');
+console.log('✅ Routes loaded: /api/users, /api/drivers, /api/trips');
 
 // Log available routes on startup
 console.log('');
@@ -38,6 +43,15 @@ console.log('  GET  /api/users/:id - Get user by ID');
 console.log('  POST /api/drivers/register - Register driver application');
 console.log('  GET  /api/drivers - Get all drivers');
 console.log('  GET  /api/drivers/:id - Get driver by ID');
+console.log('  POST /api/trips/geocode - Convert address to coordinates');
+console.log('  POST /api/trips/reverse-geocode - Convert coordinates to address');
+console.log('  POST /api/trips/estimate - Calculate distance, time, and fare');
+console.log('  POST /api/trips - Book a ride');
+console.log('  GET  /api/trips/my-rides - Get rider\'s trip history');
+console.log('  GET  /api/trips/pending - Get pending trips (drivers)');
+console.log('  PATCH /api/trips/:id/accept - Accept a trip (driver)');
+console.log('  GET  /api/trips/:id/status - Poll trip status (rider)');
+console.log('  PATCH /api/trips/:id/cancel - Cancel a trip (rider)');
 console.log('═══════════════════════════════════════════════════');
 console.log('');
 
@@ -48,16 +62,29 @@ app.get('/', (req, res) => {
 
 // Fallback for 404s - helpful for debugging
 app.use((req, res) => {
-  res.status(404).json({ 
-    success: false, 
+  res.status(404).json({
+    success: false,
     message: `Route not found: ${req.method} ${req.path}`,
     availableRoutes: [
-      'GET /', 
-      'POST /api/users/register', 
-      'POST /api/users/login', 
-      'POST /api/users/login-verify', 
+      'GET /',
+      'POST /api/users/register',
+      'POST /api/users/login',
+      'POST /api/users/login-verify',
       'POST /api/users/verify-otp',
-      'POST /api/drivers/register'
+      'POST /api/users/resend-otp',
+      'GET /api/users/:id',
+      'POST /api/drivers/register',
+      'GET /api/drivers',
+      'GET /api/drivers/:id',
+      'POST /api/trips/geocode',
+      'POST /api/trips/reverse-geocode',
+      'POST /api/trips/estimate',
+      'POST /api/trips',
+      'GET /api/trips/my-rides',
+      'GET /api/trips/pending',
+      'PATCH /api/trips/:id/accept',
+      'GET /api/trips/:id/status',
+      'PATCH /api/trips/:id/cancel'
     ]
   });
 });

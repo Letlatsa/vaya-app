@@ -6,7 +6,8 @@
     "isolatedModules": true,
     "jsx": "react-native",
     "lib": [
-      "ES2019"
+      "ES2019",
+      "DOM"
     ],
     "module": "ESNext",
     "moduleResolution": "bundler",

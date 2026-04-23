@@ -8,7 +8,7 @@ import {
   SafeAreaView,
   ScrollView,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { useContext } from 'react';
 import { UserContext } from '@/app/_layout';
 
@@ -19,33 +19,19 @@ interface CustomDrawerContentProps {
 }
 
 export default function CustomDrawerContent(props: CustomDrawerContentProps) {
-  const { userData, logout, isLoggedIn } = useContext(UserContext);
-  const navigation = useNavigation<any>();
-  
-  // Navigate to profile screen
-  const navigateToProfile = () => {
-    // Pass userId as parameter - in real app, this would come from auth
-    const userId = userData?._id || '69c1223ddb2c446f4712c5b9';
-    navigation.navigate('profile', { userId });
-  };
-  
-  // Navigate to home
-  const navigateToHome = () => {
-    navigation.navigate('(tabs)');
+  const { userData, logout } = useContext(UserContext);
+  const router = useRouter();
+
+  const navigateToProfile = () => router.push('/profile' as any);
+  const navigateToHome = () => router.replace('/(tabs)' as any);
+  const navigateToMyRides = () => router.push('/(tabs)/explore' as any);
+  const navigateToLocation = (label: string) => {
+    router.replace(`/(tabs)?location=${encodeURIComponent(label)}&target=pickup` as any);
   };
 
-  // Handle logout
   const handleLogout = async () => {
     await logout();
-    // Close drawer and navigate to login page (where user enters email for OTP)
-    if (navigation.closeDrawer) {
-      navigation.closeDrawer();
-    }
-    // Navigate to login screen for OTP-based re-authentication
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'login' }],
-    });
+    router.replace('/login' as any);
   };
   
   // Determine status based on rides
@@ -93,7 +79,7 @@ export default function CustomDrawerContent(props: CustomDrawerContentProps) {
             <Text style={styles.menuIcon}>🏠</Text>
             <Text style={styles.menuText}>Home</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity style={styles.menuItem} onPress={navigateToMyRides}>
             <Text style={styles.menuIcon}>🚗</Text>
             <Text style={styles.menuText}>My Rides</Text>
           </TouchableOpacity>
@@ -106,6 +92,26 @@ export default function CustomDrawerContent(props: CustomDrawerContentProps) {
             <Text style={styles.menuText}>Settings</Text>
           </TouchableOpacity>
         </View>
+
+        <View style={styles.savedHeader}>
+          <Text style={styles.savedTitle}>Saved locations</Text>
+        </View>
+        <View style={styles.savedLocations}>
+          <TouchableOpacity style={styles.savedItem} onPress={() => navigateToLocation('Home')}>
+            <View style={styles.savedIcon}><Text>🏡</Text></View>
+            <View style={styles.savedTextWrap}>
+              <Text style={styles.savedLabel}>Home</Text>
+              <Text style={styles.savedAddress}>Your home address</Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.savedItem} onPress={() => navigateToLocation('Office')}>
+            <View style={styles.savedIcon}><Text>🏢</Text></View>
+            <View style={styles.savedTextWrap}>
+              <Text style={styles.savedLabel}>Office</Text>
+              <Text style={styles.savedAddress}>Work or office location</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {/* Footer */}
@@ -113,7 +119,7 @@ export default function CustomDrawerContent(props: CustomDrawerContentProps) {
         <TouchableOpacity style={styles.footerItem}>
           <Text style={styles.footerText}>Help & Support</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.footerItem} onPress={() => navigation.navigate('driver-register')}>
+        <TouchableOpacity style={styles.footerItem} onPress={() => router.push('/driver-register' as any)}>
           <Text style={styles.footerText}>🚙 Become a Driver</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.footerItem} onPress={handleLogout}>
@@ -203,6 +209,54 @@ const styles = StyleSheet.create({
   menuText: {
     fontSize: 15,
     color: '#333',
+  },
+  savedHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  savedTitle: {
+    fontSize: 12,
+    color: '#999',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontWeight: '700',
+  },
+  savedLocations: {
+    paddingHorizontal: 10,
+    marginBottom: 16,
+  },
+  savedItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: '#f7f7f7',
+    marginBottom: 10,
+  },
+  savedIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#ececec',
+  },
+  savedTextWrap: {
+    flex: 1,
+  },
+  savedLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  savedAddress: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 2,
   },
   footer: {
     padding: 16,

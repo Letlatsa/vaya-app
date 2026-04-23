@@ -12,6 +12,7 @@ import api from '@/constants/apiConfig';
 const ORANGE = '#FF6B00';
 const DARK = '#1A1A2E';
 
+
 const SETTINGS = [
   { icon: '🔔', label: 'Notification Preferences' },
   { icon: '💳', label: 'Payment Methods' },
@@ -52,6 +53,7 @@ export default function ProfileScreen() {
       });
       updateUserData({ profilePicture: base64Image });
     } catch {
+      // Update locally even if API fails
       updateUserData({ profilePicture: base64Image });
     } finally {
       setUploading(false);
@@ -141,7 +143,7 @@ export default function ProfileScreen() {
               onPress={() => handleSettingPress(item.label)}
               activeOpacity={0.7}
             >
-              <Text style={styles.settingIcon}>{item.icon}</Text>
+             <Text style={styles.settingIcon}>{item.icon}</Text>
               <Text style={styles.settingLabel}>{item.label}</Text>
               <Text style={styles.settingArrow}>›</Text>
             </TouchableOpacity>

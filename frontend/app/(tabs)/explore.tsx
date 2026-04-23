@@ -1,246 +1,239 @@
-import React from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Image, 
-  useWindowDimensions,
-  TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
+import React, { useContext, useEffect, useState, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  SafeAreaView, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
+import { UserContext } from '../_layout';
+import api from '@/constants/apiConfig';
 
-export default function ExploreScreen() {
-  const { width, height } = useWindowDimensions();
+const ORANGE = '#FF6B00';
+const DARK = '#1A1A2E';
+
+type Trip = {
+  _id: string;
+  pickupLocation: { address: string };
+  destination: { address: string };
+  rideType: string;
+  price: number;
+  status: 'pending' | 'active' | 'completed' | 'cancelled';
+  createdAt: string;
+  driver?: { name: string; phoneNumber: string } | null;
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: '#F59E0B',
+  active: '#3B82F6',
+  completed: '#10B981',
+  cancelled: '#EF4444',
+};
+
+const STATUS_ICONS: Record<string, string> = {
+  pending: '⏳',
+  active: '🚗',
+  completed: '✅',
+  cancelled: '❌',
+};
+
+function formatDate(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+export default function MyRidesScreen() {
   const navigation = useNavigation();
-  
-  const openDrawer = () => {
-    navigation.dispatch(DrawerActions.openDrawer());
+  const { userData, isLoggedIn } = useContext(UserContext);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchTrips = useCallback(async () => {
+    if (!isLoggedIn) { setLoading(false); return; }
+    try {
+      setError(null);
+      const res = await api.get('/api/trips/my-rides');
+      setTrips(res.data.data);
+    } catch (e: any) {
+      setError(e.response?.data?.message || 'Failed to load rides');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [isLoggedIn]);
+
+  useEffect(() => { fetchTrips(); }, [fetchTrips]);
+
+  const onRefresh = () => { setRefreshing(true); fetchTrips(); };
+
+  const stats = {
+    total: trips.length,
+    completed: trips.filter(t => t.status === 'completed').length,
+    spent: trips.filter(t => t.status === 'completed').reduce((s, t) => s + t.price, 0),
   };
-  
-  // Responsive sizes
-  const logoSize = Math.min(width, height) * 0.12;
-  const labelFontSize = Math.min(width, height) * 0.018;
-  const paddingHorizontal = width * 0.06;
-  const cardWidth = width - paddingHorizontal * 2;
-  const marginHorizontal = width * 0.05;
 
-  const menuItems = [
-    { icon: '👤', label: 'Edit Profile', arrow: '›' },
-    { icon: '📍', label: 'Saved Addresses', arrow: '›' },
-    { icon: '💳', label: 'Payment Methods', arrow: '›' },
-    { icon: '🔔', label: 'Notifications', arrow: '›' },
-    { icon: '🛡️', label: 'Safety', arrow: '›' },
-    { icon: '❓', label: 'Help Center', arrow: '›' },
-    { icon: '📜', label: 'Terms & Privacy', arrow: '›' },
-  ];
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
-        <View style={styles.headerBar}>
-          <TouchableOpacity onPress={openDrawer} style={styles.menuButton}>
-            <Text style={styles.drawerMenuIcon}>☰</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitleText}>My Rides</Text>
-          <View style={styles.placeholder} />
-        </View>
-
-        {/* Profile Card */}
-        <View style={[styles.profileCard, { paddingHorizontal, marginHorizontal }]}>
-          <View style={styles.profileInfo}>
-            <Image
-              source={require('@/assets/images/Logo.jpeg')}
-              style={[styles.profileLogo, { width: logoSize, height: logoSize }]}
-              resizeMode="contain"
-            />
-            <View style={styles.profileText}>
-              <Text style={[styles.userName, { fontSize: labelFontSize * 1.3 }]}>Guest User</Text>
-              <Text style={[styles.userPhone, { fontSize: labelFontSize }]}>+27 000 000 000</Text>
-            </View>
-          </View>
-          <Text style={styles.arrow}>›</Text>
-        </View>
-
-        {/* Wallet Section */}
-        <View style={[styles.section, { paddingHorizontal }]}>
-          <View style={styles.walletCard}>
-            <View style={styles.walletInfo}>
-              <Text style={styles.walletLabel}>Vaya Wallet</Text>
-              <Text style={[styles.walletBalance, { fontSize: labelFontSize * 1.5 }]}>R 0.00</Text>
-            </View>
-            <TouchableOpacity style={styles.addMoneyButton}>
-              <Text style={styles.addMoneyText}>Add Money</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Menu Items */}
-        <View style={[styles.menuSection, { paddingHorizontal }]}>
-          {menuItems.map((item, index) => (
-            <TouchableOpacity key={index} style={styles.menuItem}>
-              <View style={styles.menuItemLeft}>
-                <Text style={styles.menuIcon}>{item.icon}</Text>
-                <Text style={[styles.menuLabel, { fontSize: labelFontSize }]}>{item.label}</Text>
-              </View>
-              <Text style={styles.menuArrow}>{item.arrow}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Version */}
-        <View style={styles.versionContainer}>
-          <Text style={[styles.versionText, { fontSize: labelFontSize * 0.85 }]}>
-            Vaya App v1.0.0
+  const renderTrip = ({ item }: { item: Trip }) => (
+    <View style={styles.tripCard}>
+      <View style={styles.tripHeader}>
+        <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[item.status] + '20' }]}>
+          <Text style={styles.statusIcon}>{STATUS_ICONS[item.status]}</Text>
+          <Text style={[styles.statusText, { color: STATUS_COLORS[item.status] }]}>
+            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
           </Text>
         </View>
-      </ScrollView>
+        <Text style={styles.tripDate}>{formatDate(item.createdAt)}</Text>
+      </View>
+
+      <View style={styles.routeContainer}>
+        <View style={styles.routeRow}>
+          <View style={[styles.routeDot, { backgroundColor: ORANGE }]} />
+          <Text style={styles.routeText} numberOfLines={1}>{item.pickupLocation.address || 'Pickup'}</Text>
+        </View>
+        <View style={styles.routeLine} />
+        <View style={styles.routeRow}>
+          <View style={[styles.routeDot, { backgroundColor: DARK }]} />
+          <Text style={styles.routeText} numberOfLines={1}>{item.destination.address || 'Destination'}</Text>
+        </View>
+      </View>
+
+      <View style={styles.tripFooter}>
+        <View style={styles.tripMeta}>
+          <Text style={styles.rideType}>{item.rideType}</Text>
+          {item.driver && <Text style={styles.driverName}>👤 {item.driver.name}</Text>}
+        </View>
+        <Text style={styles.tripPrice}>M {item.price}</Text>
+      </View>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.dispatch(DrawerActions.openDrawer())} style={styles.menuBtn}>
+          <View style={styles.menuLine} />
+          <View style={[styles.menuLine, { width: 14 }]} />
+          <View style={styles.menuLine} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>My Rides</Text>
+        <View style={{ width: 36 }} />
+      </View>
+
+      {/* Stats Bar */}
+      {isLoggedIn && !loading && trips.length > 0 && (
+        <View style={styles.statsBar}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{stats.total}</Text>
+            <Text style={styles.statLabel}>Total</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{stats.completed}</Text>
+            <Text style={styles.statLabel}>Completed</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>M {stats.spent}</Text>
+            <Text style={styles.statLabel}>Spent</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Content */}
+      {!isLoggedIn ? (
+        <View style={styles.centered}>
+          <Text style={styles.emptyIcon}>🔒</Text>
+          <Text style={styles.emptyTitle}>Sign in to view rides</Text>
+          <Text style={styles.emptySubtitle}>Your ride history will appear here</Text>
+        </View>
+      ) : loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={ORANGE} />
+          <Text style={styles.loadingText}>Loading your rides...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.centered}>
+          <Text style={styles.emptyIcon}>⚠️</Text>
+          <Text style={styles.emptyTitle}>Something went wrong</Text>
+          <Text style={styles.emptySubtitle}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={fetchTrips}>
+            <Text style={styles.retryBtnText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : trips.length === 0 ? (
+        <View style={styles.centered}>
+          <Text style={styles.emptyIcon}>🚗</Text>
+          <Text style={styles.emptyTitle}>No rides yet</Text>
+          <Text style={styles.emptySubtitle}>Book your first ride from the home screen</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={trips}
+          keyExtractor={item => item._id}
+          renderItem={renderTrip}
+          contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[ORANGE]} tintColor={ORANGE} />}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
+  safe: { flex: 1, backgroundColor: '#f5f7fa' },
+
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 14, backgroundColor: ORANGE,
   },
-  scrollContent: {
-    paddingBottom: 30,
+  menuBtn: { gap: 5, padding: 4 },
+  menuLine: { width: 22, height: 2.5, backgroundColor: '#fff', borderRadius: 2 },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+
+  statsBar: {
+    flexDirection: 'row', backgroundColor: '#fff',
+    marginHorizontal: 16, marginTop: 16, borderRadius: 16,
+    paddingVertical: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07, shadowRadius: 8, elevation: 3,
   },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FF6B00',
+  statItem: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: 18, fontWeight: '800', color: DARK },
+  statLabel: { fontSize: 11, color: '#999', marginTop: 2, fontWeight: '600' },
+  statDivider: { width: 1, backgroundColor: '#eee' },
+
+  list: { padding: 16, paddingTop: 12 },
+
+  tripCard: {
+    backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07, shadowRadius: 8, elevation: 3,
   },
-  menuButton: {
-    padding: 8,
-  },
-  drawerMenuIcon: {
-    fontSize: 24,
-    color: '#fff',
-  },
-  headerTitleText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  placeholder: {
-    width: 40,
-  },
-  profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 15,
-    marginTop: -20,
-    marginHorizontal: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  profileInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  profileLogo: {
-    borderRadius: 30,
-    marginRight: 12,
-  },
-  profileText: {
-    justifyContent: 'center',
-  },
-  userName: {
-    fontWeight: '600',
-    color: '#333',
-  },
-  userPhone: {
-    color: '#666',
-    marginTop: 2,
-  },
-  arrow: {
-    fontSize: 24,
-    color: '#999',
-  },
-  section: {
-    marginTop: 20,
-  },
-  walletCard: {
-    backgroundColor: '#FF6B00',
-    borderRadius: 12,
-    padding: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  walletInfo: {
-    flex: 1,
-  },
-  walletLabel: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 14,
-  },
-  walletBalance: {
-    color: '#fff',
-    fontWeight: 'bold',
-    marginTop: 5,
-  },
-  addMoneyButton: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  addMoneyText: {
-    color: '#FF6B00',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  menuSection: {
-    marginTop: 20,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginHorizontal: 20,
-    overflow: 'hidden',
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 15,
-    paddingHorizontal: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  menuItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  menuIcon: {
-    fontSize: 20,
-    marginRight: 12,
-  },
-  menuLabel: {
-    color: '#333',
-  },
-  menuArrow: {
-    fontSize: 20,
-    color: '#999',
-  },
-  versionContainer: {
-    alignItems: 'center',
-    marginTop: 30,
-  },
-  versionText: {
-    color: '#999',
-  },
+  tripHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, gap: 4 },
+  statusIcon: { fontSize: 12 },
+  statusText: { fontSize: 12, fontWeight: '700' },
+  tripDate: { fontSize: 12, color: '#999' },
+
+  routeContainer: { marginBottom: 14 },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  routeDot: { width: 10, height: 10, borderRadius: 5 },
+  routeText: { flex: 1, fontSize: 13, color: '#333', fontWeight: '500' },
+  routeLine: { width: 2, height: 10, backgroundColor: '#e0e0e0', marginLeft: 4, marginVertical: 2 },
+
+  tripFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 12 },
+  tripMeta: { gap: 2 },
+  rideType: { fontSize: 12, fontWeight: '700', color: '#666', textTransform: 'uppercase', letterSpacing: 0.5 },
+  driverName: { fontSize: 12, color: '#999' },
+  tripPrice: { fontSize: 18, fontWeight: '800', color: ORANGE },
+
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
+  emptyIcon: { fontSize: 56, marginBottom: 16 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: DARK, marginBottom: 8 },
+  emptySubtitle: { fontSize: 14, color: '#999', textAlign: 'center', lineHeight: 20 },
+  loadingText: { marginTop: 12, fontSize: 14, color: '#999' },
+  retryBtn: { marginTop: 20, backgroundColor: ORANGE, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 12 },
+  retryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });
