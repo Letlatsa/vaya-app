@@ -22,6 +22,8 @@ export const API_ENDPOINTS = {
   // Driver endpoints
   DRIVERS: '/api/drivers',
   DRIVER_REGISTER: '/api/drivers/register',
+  DRIVER_LOGIN: '/api/drivers/login',
+  DRIVER_LOGIN_VERIFY: '/api/drivers/login-verify',
   
   // Trip endpoints
   TRIPS: '/api/trips',
@@ -30,6 +32,11 @@ export const API_ENDPOINTS = {
   TRIP_STATUS: '/api/trips/:id/status',
   ACCEPT_TRIP: '/api/trips/:id/accept',
   CANCEL_TRIP: '/api/trips/:id/cancel',
+  TRIP_ARRIVED: '/api/trips/:id/arrived',
+  TRIP_START: '/api/trips/:id/start',
+  TRIP_COMPLETE: '/api/trips/:id/complete',
+  TRIP_PAYMENT: '/api/trips/:id/payment',
+  TRIP_RATING: '/api/trips/:id/rating',
 };
 
 // Create axios instance

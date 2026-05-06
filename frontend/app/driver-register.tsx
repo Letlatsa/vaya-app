@@ -219,6 +219,16 @@ export default function DriverRegisterScreen() {
             )}
           </TouchableOpacity>
 
+          <View style={styles.signInContainer}>
+            <Text style={[styles.signInText, { fontSize: labelFontSize }]}>Already a driver?</Text>
+            <TouchableOpacity 
+              onPress={() => router.push('/driver-login')}
+              disabled={isLoading}
+            >
+              <Text style={[styles.signInLink, { fontSize: labelFontSize }]}> Sign In</Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity 
             style={styles.backButton}
             onPress={() => router.back()}
@@ -386,6 +396,20 @@ const styles = StyleSheet.create({
   },
   backText: {
     color: '#666',
+  },
+  signInContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 15,
+  },
+  signInText: {
+    color: '#666',
+  },
+  signInLink: {
+    color: '#FF6B00',
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,

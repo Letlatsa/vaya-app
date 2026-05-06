@@ -1,12 +1,16 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const http = require('http');
 const userApi = require('./api/userApi');
 const driverApi = require('./api/driverApi');
 const tripApi = require('./api/tripApi');
+const SocketManager = require('./socket');
 require('dotenv').config();
 
 const app = express();
+const server = http.createServer(app);
+const socketManager = new SocketManager(server);
 
 // Middleware
 app.use(cors({
@@ -41,6 +45,8 @@ console.log('  POST /api/users/verify-otp - Verify registration OTP');
 console.log('  POST /api/users/resend-otp - Resend OTP');
 console.log('  GET  /api/users/:id - Get user by ID');
 console.log('  POST /api/drivers/register - Register driver application');
+console.log('  POST /api/drivers/login - Send OTP for driver login');
+console.log('  POST /api/drivers/login-verify - Verify driver login OTP');
 console.log('  GET  /api/drivers - Get all drivers');
 console.log('  GET  /api/drivers/:id - Get driver by ID');
 console.log('  POST /api/trips/geocode - Convert address to coordinates');
@@ -106,6 +112,10 @@ mongoose.connect(MONGO_URI)
   });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`📡 Server running on http://localhost:${PORT}`);
+  console.log(`🔌 WebSocket Server Ready for Real-Time Communication`);
 });
+
+// Export socketManager for use in other modules
+module.exports = { app, server, socketManager };

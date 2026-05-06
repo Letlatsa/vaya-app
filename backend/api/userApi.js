@@ -76,20 +76,27 @@ router.post('/login', async (req, res) => {
     const { sendOTPEmail } = require('../services/emailService');
     const emailResult = await sendOTPEmail(email, otp, user.name);
 
-    if (!emailResult.success) {
-      console.error('Failed to send email:', emailResult.error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send verification email'
-      });
+    let responseMessage = 'OTP sent to your email for login';
+    let note = undefined;
+    
+    if (!emailResult.delivered) {
+      // Email wasn't delivered but OTP is available via console and devOTP
+      note = emailResult.note || 'OTP is logged in terminal and available for testing';
+      responseMessage = 'OTP generated (email delivery failed). Check terminal for OTP';
     }
 
-    res.status(200).json({
+    const response = {
       success: true,
-      message: 'OTP sent to your email for login',
+      message: responseMessage,
       // Development only - remove in production
       devOTP: otp
-    });
+    };
+    
+    if (note) {
+      response.note = note;
+    }
+
+    res.status(200).json(response);
 
   } catch (error) {
     console.error('Login Error:', error);

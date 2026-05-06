@@ -1,14 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const Trip = require('../models/Trip');
+const Driver = require('../models/Driver');
+const User = require('../models/User');
 const { authMiddleware } = require('../middleware/authMiddleware');
+const tripService = require('../services/tripService');
+const paymentService = require('../services/paymentService');
+const ratingService = require('../services/ratingService');
 const {
   calculateDistance,
   calculateTravelTime,
   calculateFare,
   getAddressFromCoords,
   getCoordsFromAddress,
-  getRouteDetails
+  getRouteDetails,
+  calculateBilling,
+  calculateDistanceFromWaypoints
 } = require('../services/tripService');
 
 // @route  POST /api/trips/geocode
@@ -265,24 +272,417 @@ router.get('/:id/status', authMiddleware, async (req, res) => {
   }
 });
 
-// @route  PATCH /api/trips/:id/cancel
-// @desc   Rider cancels a pending trip
+// ============================
+// ===== NEW ENDPOINTS =====
+// ============================
+
+// @route  PUT /api/trips/:id/arrived
+// @desc   Driver marks arrival at pickup location
 // @access Private
-router.patch('/:id/cancel', authMiddleware, async (req, res) => {
+router.put('/:id/arrived', authMiddleware, async (req, res) => {
   try {
+    const trip = await Trip.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          status: 'arrived',
+          arrivedAt: new Date()
+        },
+        $push: {
+          statusHistory: {
+            status: 'arrived',
+            changedAt: new Date(),
+            changedBy: req.user.id
+          }
+        }
+      },
+      { new: true }
+    ).populate('passenger driver');
+
+    res.status(200).json({
+      success: true,
+      message: 'Driver marked as arrived',
+      data: trip
+    });
+  } catch (error) {
+    console.error('Arrived Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to mark arrival' });
+  }
+});
+
+// @route  PUT /api/trips/:id/start
+// @desc   Driver starts the trip (client boarded)
+// @access Private
+router.put('/:id/start', authMiddleware, async (req, res) => {
+  try {
+    const trip = await Trip.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          status: 'in_progress',
+          startedAt: new Date()
+        },
+        $push: {
+          statusHistory: {
+            status: 'in_progress',
+            changedAt: new Date(),
+            changedBy: req.user.id
+          }
+        }
+      },
+      { new: true }
+    ).populate('passenger driver');
+
+    res.status(200).json({
+      success: true,
+      message: 'Trip started',
+      data: trip
+    });
+  } catch (error) {
+    console.error('Start Trip Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to start trip' });
+  }
+});
+
+// @route  PUT /api/trips/:id/complete
+// @desc   Driver completes trip and triggers billing
+// @access Private
+router.put('/:id/complete', authMiddleware, async (req, res) => {
+  try {
+    const { actualDistance, actualDuration, waypoints } = req.body;
+
+    if (!actualDistance || !actualDuration) {
+      return res.status(400).json({
+        success: false,
+        message: 'actualDistance and actualDuration are required'
+      });
+    }
+
+    // Calculate billing
+    const billing = calculateBilling(actualDistance, actualDuration);
+
+    // If waypoints provided, recalculate distance more accurately
+    let finalDistance = actualDistance;
+    if (waypoints && waypoints.length > 0) {
+      finalDistance = calculateDistanceFromWaypoints(waypoints);
+      // Recalculate billing with actual distance
+      const revisedBilling = calculateBilling(finalDistance, actualDuration);
+      const updatedTrip = await Trip.findByIdAndUpdate(
+        req.params.id,
+        {
+          $set: {
+            status: 'completed',
+            completedAt: new Date(),
+            actualDistance: finalDistance,
+            actualDuration,
+            billing: revisedBilling,
+            'payment.status': 'unpaid',
+            'route.waypoints': waypoints
+          },
+          $push: {
+            statusHistory: {
+              status: 'completed',
+              changedAt: new Date(),
+              changedBy: req.user.id
+            }
+          }
+        },
+        { new: true }
+      ).populate('passenger driver');
+
+      // Update driver stats
+      await Driver.findByIdAndUpdate(req.user.id, {
+        $inc: {
+          completedTrips: 1,
+          totalEarnings: revisedBilling.totalCost
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Trip completed',
+        data: {
+          trip: updatedTrip,
+          billing: revisedBilling
+        }
+      });
+    }
+
+    const updatedTrip = await Trip.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          status: 'completed',
+          completedAt: new Date(),
+          actualDistance,
+          actualDuration,
+          billing,
+          'payment.status': 'unpaid'
+        },
+        $push: {
+          statusHistory: {
+            status: 'completed',
+            changedAt: new Date(),
+            changedBy: req.user.id
+          }
+        }
+      },
+      { new: true }
+    ).populate('passenger driver');
+
+    // Update driver stats
+    await Driver.findByIdAndUpdate(req.user.id, {
+      $inc: {
+        completedTrips: 1,
+        totalEarnings: billing.totalCost
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Trip completed',
+      data: {
+        trip: updatedTrip,
+        billing
+      }
+    });
+  } catch (error) {
+    console.error('Complete Trip Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to complete trip' });
+  }
+});
+
+// @route  POST /api/trips/:id/payment
+// @desc   Process payment for completed trip
+// @access Private
+router.post('/:id/payment', authMiddleware, async (req, res) => {
+  try {
+    const { method, cardToken } = req.body;
     const trip = await Trip.findById(req.params.id);
 
-    if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
-    if (trip.passenger.toString() !== req.user.id) return res.status(403).json({ success: false, message: 'Not authorized' });
-    if (trip.status === 'active') return res.status(400).json({ success: false, message: 'Cannot cancel an active trip' });
+    if (!trip) {
+      return res.status(404).json({ success: false, message: 'Trip not found' });
+    }
 
-    trip.status = 'cancelled';
+    if (trip.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Trip must be completed before payment'
+      });
+    }
+
+    let paymentResult;
+
+    if (method === 'CARD' && cardToken) {
+      // Process Stripe payment
+      paymentResult = await paymentService.processCardPayment(
+        trip._id,
+        trip.billing.totalCost,
+        cardToken,
+        trip.passenger,
+        trip.driver
+      );
+    } else if (method === 'CASH') {
+      // Cash payment handled by driver confirmation
+      paymentResult = {
+        success: true,
+        transactionId: `CASH_${Date.now()}`,
+        status: 'COMPLETED',
+        amount: trip.billing.totalCost,
+        timestamp: new Date()
+      };
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment method'
+      });
+    }
+
+    if (paymentResult.success) {
+      // Update trip payment status
+      const updatedTrip = await Trip.findByIdAndUpdate(
+        req.params.id,
+        {
+          $set: {
+            'payment.status': 'completed',
+            'payment.method': method,
+            'payment.transactionId': paymentResult.transactionId,
+            'payment.processedAt': new Date()
+          }
+        },
+        { new: true }
+      ).populate('passenger driver');
+
+      res.status(200).json({
+        success: true,
+        message: 'Payment processed successfully',
+        data: {
+          trip: updatedTrip,
+          transactionId: paymentResult.transactionId
+        }
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Payment processing failed',
+        error: paymentResult.error
+      });
+    }
+  } catch (error) {
+    console.error('Payment Error:', error);
+    res.status(500).json({ success: false, message: 'Payment processing failed' });
+  }
+});
+
+// @route  POST /api/trips/:id/rating
+// @desc   Submit rating for trip
+// @access Private
+router.post('/:id/rating', authMiddleware, async (req, res) => {
+  try {
+    const { score, feedback, tags } = req.body;
+    const trip = await Trip.findById(req.params.id);
+
+    if (!trip) {
+      return res.status(404).json({ success: false, message: 'Trip not found' });
+    }
+
+    // Determine who is rating whom
+    let ratedUserId;
+    if (trip.passenger.toString() === req.user.id) {
+      // Client is rating driver
+      ratedUserId = trip.driver;
+    } else if (trip.driver.toString() === req.user.id) {
+      // Driver is rating client
+      ratedUserId = trip.passenger;
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to rate this trip'
+      });
+    }
+
+    const ratingResult = await ratingService.submitRating(
+      trip._id,
+      ratedUserId,
+      req.user.id,
+      score,
+      feedback,
+      tags
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Rating submitted',
+      data: ratingResult
+    });
+  } catch (error) {
+    console.error('Rating Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to submit rating' });
+  }
+});
+
+// @route  GET /api/trips/:id/ratings
+// @desc   Get user's ratings
+// @access Private
+router.get('/:id/ratings', authMiddleware, async (req, res) => {
+  try {
+    const ratings = await ratingService.getUserRatings(req.user.id, 10, 0);
+
+    res.status(200).json({
+      success: true,
+      data: ratings
+    });
+  } catch (error) {
+    console.error('Get Ratings Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch ratings' });
+  }
+});
+
+// @route  GET /api/trips/:id
+// @desc   Get trip details
+// @access Private
+router.get('/:id', authMiddleware, async (req, res) => {
+  try {
+    const trip = await Trip.findById(req.params.id)
+      .populate('passenger', 'fullName phoneNumber profilePicture')
+      .populate('driver', 'fullName phoneNumber profilePicture carMake carModel carColor registrationNumber');
+
+    if (!trip) {
+      return res.status(404).json({ success: false, message: 'Trip not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: trip
+    });
+  } catch (error) {
+    console.error('Get Trip Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch trip' });
+  }
+});
+
+// @route  PUT /api/trips/:id/location
+// @desc   Update driver location during trip
+// @access Private
+router.put('/:id/location', authMiddleware, async (req, res) => {
+  try {
+    const { lat, lng, bearing, speed, accuracy } = req.body;
+
+    if (lat === undefined || lng === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Latitude and longitude required'
+      });
+    }
+
+    const trip = await Trip.findById(req.params.id);
+    if (!trip) {
+      return res.status(404).json({ success: false, message: 'Trip not found' });
+    }
+
+    // Add waypoint to trip
+    const waypoint = {
+      lat,
+      lng,
+      timestamp: new Date()
+    };
+
+    // Update trip route
+    if (!trip.route) {
+      trip.route = { waypoints: [] };
+    }
+
+    trip.route.waypoints.push(waypoint);
     await trip.save();
 
-    res.status(200).json({ success: true, message: 'Trip cancelled' });
+    res.status(200).json({
+      success: true,
+      message: 'Location updated'
+    });
   } catch (error) {
-    console.error('Cancel Trip Error:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Location Update Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update location' });
+  }
+});
+
+// @route  GET /api/trips/driver/:driverId
+// @desc   Get driver's trip history
+// @access Private
+router.get('/driver/:driverId', authMiddleware, async (req, res) => {
+  try {
+    const trips = await Trip.find({ driver: req.params.driverId })
+      .populate('passenger', 'fullName profilePicture phoneNumber')
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    res.status(200).json({
+      success: true,
+      count: trips.length,
+      data: trips
+    });
+  } catch (error) {
+    console.error('Driver Trips Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch driver trips' });
   }
 });
 

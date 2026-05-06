@@ -86,20 +86,27 @@ const sendOTP = async (req, res) => {
     // Send OTP via email
     const emailResult = await sendOTPEmail(email, otp, name);
 
-    if (!emailResult.success) {
-      console.error('Failed to send email:', emailResult.error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send verification email'
-      });
+    let responseMessage = 'OTP sent to your email for verification';
+    let note = undefined;
+    
+    if (!emailResult.delivered) {
+      // Email wasn't delivered but OTP is available via console and devOTP
+      note = emailResult.note || 'OTP is logged in terminal and available for testing';
+      responseMessage = 'OTP generated (email delivery failed). Check terminal for OTP';
     }
 
-    res.status(200).json({
+    const response = {
       success: true,
-      message: 'OTP sent to your email for verification',
+      message: responseMessage,
       // Remove this in production - for testing only
       devOTP: otp
-    });
+    };
+    
+    if (note) {
+      response.note = note;
+    }
+
+    res.status(200).json(response);
 
   } catch (error) {
     console.error('Send OTP Error:', error);
