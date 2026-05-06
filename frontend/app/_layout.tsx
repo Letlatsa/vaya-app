@@ -7,7 +7,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import authStorage from '@/utils/authStorage';
-import api from '@/constants/apiConfig';
+import api, { API_ENDPOINTS } from '@/constants/apiConfig';
 
 // User data type
 type UserDataType = {
@@ -61,11 +61,7 @@ export default function RootLayout() {
       if (token) {
         // Validate token with backend
         try {
-          const response = await api.post('/api/users/validate-token', {}, {
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          });
+          const response = await api.post(API_ENDPOINTS.VALIDATE_TOKEN, {});
 
           if (response.data.success) {
             // Token is valid, restore user data
@@ -82,8 +78,9 @@ export default function RootLayout() {
             console.log('✅ Session restored for:', response.data.data.name);
           }
         } catch (error: any) {
-          // Token invalid or expired, clear session
-          console.log('Session expired, clearing...');
+          // Token invalid/expired or backend unreachable
+          // Log but don't crash - just clear session silently
+          console.warn('⚠️ Could not validate token:', error.message);
           await authStorage.clearSession();
         }
       }
@@ -135,6 +132,8 @@ export default function RootLayout() {
             <Stack.Screen name="profile" options={{ headerShown: false }} />
             <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
             <Stack.Screen name="driver-register" options={{ headerShown: false }} />
+            <Stack.Screen name="driver-login" options={{ headerShown: false }} />
+            <Stack.Screen name="driver-dashboard" options={{ headerShown: false }} />
             <Stack.Screen name="driver-license" options={{ headerShown: false }} />
             <Stack.Screen name="driver-car" options={{ headerShown: false }} />
             <Stack.Screen name="driver-success" options={{ headerShown: false }} />

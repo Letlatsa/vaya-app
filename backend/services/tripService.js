@@ -185,5 +185,90 @@ module.exports = {
   calculateFare,
   getAddressFromCoords,
   getCoordsFromAddress,
-  getRouteDetails
+  getRouteDetails,
+  
+  // ===== ENHANCED BILLING CALCULATION =====
+  calculateBilling(distanceKm, durationMinutes) {
+    const baseFare = 5.00;
+    const distanceCharge = distanceKm * 10.00; // 10 per km
+    const timeCharge = durationMinutes * 0.15;  // 0.15 per minute
+
+    // Use max of base fare or calculated charge
+    const subtotal = Math.max(baseFare, distanceCharge + timeCharge);
+
+    // Apply surge pricing if during peak hours
+    const hour = new Date().getHours();
+    const surgeMultiplier = [8, 9, 17, 18, 19].includes(hour) ? 1.5 : 1.0;
+    const surgedSubtotal = subtotal * surgeMultiplier;
+
+    // Calculate tax (5%)
+    const tax = surgedSubtotal * 0.05;
+    const totalCost = surgedSubtotal + tax;
+
+    return {
+      baseFare: parseFloat(baseFare.toFixed(2)),
+      distanceCharge: parseFloat(distanceCharge.toFixed(2)),
+      timeCharge: parseFloat(timeCharge.toFixed(2)),
+      subtotal: parseFloat(subtotal.toFixed(2)),
+      surgePricing: {
+        enabled: surgeMultiplier > 1,
+        multiplier: surgeMultiplier,
+        reason: surgeMultiplier > 1 ? 'PEAK_HOURS' : null
+      },
+      tax: parseFloat(tax.toFixed(2)),
+      totalCost: parseFloat(totalCost.toFixed(2)),
+      currency: 'ZWL',
+      distanceKm,
+      durationMinutes
+    };
+  },
+
+  /**
+   * Calculate distance from waypoints
+   */
+  calculateDistanceFromWaypoints(waypoints) {
+    if (!waypoints || waypoints.length < 2) return 0;
+
+    let totalDistance = 0;
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const point1 = waypoints[i];
+      const point2 = waypoints[i + 1];
+
+      const distance = calculateDistance(
+        point1.lat, point1.lng,
+        point2.lat, point2.lng
+      );
+
+      totalDistance += distance;
+    }
+
+    return parseFloat(totalDistance.toFixed(2));
+  },
+
+  /**
+   * Find drivers within service area
+   */
+  async findNearbyDrivers(Trip, Driver, pickupLocation, radius = 5000) {
+    try {
+      const nearbyDrivers = await Driver.find({
+        status: 'ONLINE',
+        isAvailable: true,
+        backgroundCheckStatus: 'APPROVED',
+        currentLocation: {
+          $near: {
+            $geometry: {
+              type: 'Point',
+              coordinates: [pickupLocation.lng, pickupLocation.lat]
+            },
+            $maxDistance: radius
+          }
+        }
+      }).select('_id').limit(20);
+
+      return nearbyDrivers.map(d => d._id);
+    } catch (error) {
+      console.error('[FindNearbyDrivers Error]:', error);
+      return [];
+    }
+  }
 };

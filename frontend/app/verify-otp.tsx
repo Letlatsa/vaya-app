@@ -18,11 +18,12 @@ import { UserContext } from './_layout';
 import authStorage from '@/utils/authStorage';
 
 const API_URL = 'http://localhost:5000/api/users';
+const DRIVER_API_URL = 'http://localhost:5000/api/drivers';
 
 export default function OTPScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { email, isLogin } = params;
+  const { email, isLogin, isDriver } = params;
   const { updateUserData } = useContext(UserContext);
   
   const { width, height } = useWindowDimensions();
@@ -92,6 +93,7 @@ export default function OTPScreen() {
     
     console.log('OTP being sent:', finalOtp);
     console.log('Email:', email);
+    console.log('Is Driver:', isDriver);
     
     if (finalOtp.length !== 4) {
       setModalTitle('Validation Error');
@@ -112,9 +114,12 @@ export default function OTPScreen() {
     setIsLoading(true);
 
     try {
+      // Determine which API to use
+      const baseURL = isDriver === 'true' ? DRIVER_API_URL : API_URL;
+      
       // Use different endpoint for login vs registration
       const endpoint = isLogin === 'true' ? '/login-verify' : '/verify-otp';
-      const response = await axios.post(`${API_URL}${endpoint}`, {
+      const response = await axios.post(`${baseURL}${endpoint}`, {
         email: email,
         otp: finalOtp
       });
@@ -125,8 +130,29 @@ export default function OTPScreen() {
           await authStorage.setToken(response.data.token);
         }
 
-        // If this is a login flow, use user data from response directly
-        if (isLogin === 'true' && response.data.data) {
+        // If this is a driver login flow
+        if (isDriver === 'true' && isLogin === 'true' && response.data.data) {
+          const driver = response.data.data;
+          
+          // Update the context with driver data
+          updateUserData({
+            _id: driver._id,
+            name: driver.fullName,
+            email: driver.email,
+            phoneNumber: driver.phoneNumber,
+            profilePicture: driver.profilePicture,
+            balance: 0,
+            totalRides: 0,
+            starRating: 0,
+          });
+          
+          setModalTitle('Success');
+          setModalMessage('Driver login successful! Welcome back.');
+          setIsSuccess(true);
+          setModalVisible(true);
+        }
+        // If this is a regular user login flow
+        else if (isLogin === 'true' && response.data.data) {
           const user = response.data.data;
           
           // Update the context with user data
@@ -181,16 +207,21 @@ export default function OTPScreen() {
   const handleModalClose = () => {
     setModalVisible(false);
     if (isSuccess) {
-      // Navigate to home (tabs) after successful login/registration
-      router.replace('/(tabs)');
+      // Navigate to driver dashboard if driver login, otherwise go to client tabs
+      if (isDriver === 'true') {
+        router.replace('/driver-map');
+      } else {
+        router.replace('/(tabs)');
+      }
     }
   };
 
   const handleResendOTP = async () => {
     setIsLoading(true);
     try {
+      const baseURL = isDriver === 'true' ? DRIVER_API_URL : API_URL;
       const loginParam = isLogin === 'true' ? '/login' : '/register';
-      const response = await axios.post(`${API_URL}${loginParam}`, {
+      const response = await axios.post(`${baseURL}${loginParam}`, {
         email: email,
       });
       

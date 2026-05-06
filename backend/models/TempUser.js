@@ -36,7 +36,6 @@ const tempUserSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-tempUserSchema.index({ email: 1 });
 tempUserSchema.index({ otp: 1 });
 tempUserSchema.index({ email: 1, isLogin: 1 });
 

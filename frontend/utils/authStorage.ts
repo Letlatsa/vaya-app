@@ -50,7 +50,8 @@ export const authStorage = {
 
   async clearSession(): Promise<void> {
     try {
-      await AsyncStorage.multiRemove([TOKEN_KEY, USER_DATA_KEY]);
+      await AsyncStorage.removeItem(TOKEN_KEY);
+      await AsyncStorage.removeItem(USER_DATA_KEY);
     } catch (error) {
       console.error('Error clearing session:', error);
     }
