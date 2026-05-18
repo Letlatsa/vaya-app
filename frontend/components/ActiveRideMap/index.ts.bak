@@ -1,0 +1,3 @@
+// Platform-specific component - use index.native.ts or index.web.ts
+// This file only defines types for export
+export type { ActiveRideMapProps } from './ActiveRideMap.web';

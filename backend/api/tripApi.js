@@ -1,5 +1,4 @@
 const express = require('express');
-const router = express.Router();
 const Trip = require('../models/Trip');
 const Driver = require('../models/Driver');
 const User = require('../models/User');
@@ -17,6 +16,9 @@ const {
   calculateBilling,
   calculateDistanceFromWaypoints
 } = require('../services/tripService');
+
+module.exports = (socketManager) => {
+  const router = express.Router();
 
 // @route  POST /api/trips/geocode
 // @desc   Convert address to coordinates
@@ -119,6 +121,39 @@ router.post('/estimate', async (req, res) => {
   } catch (error) {
     console.error('Estimate Error:', error);
     res.status(500).json({ success: false, message: 'Failed to calculate trip estimate' });
+  }
+});
+
+// @route  POST /api/trips/route
+// @desc   Get route between two points
+// @access Public
+router.post('/route', async (req, res) => {
+  try {
+    const { originCoords, destinationCoords } = req.body;
+
+    if (!originCoords || !destinationCoords) {
+      return res.status(400).json({ success: false, message: 'Origin and destination coordinates are required' });
+    }
+
+    const routeDetails = await getRouteDetails(
+      originCoords.lat,
+      originCoords.lng,
+      destinationCoords.lat,
+      destinationCoords.lng
+    );
+
+    res.status(200).json({
+      success: true,
+      data: {
+        distance: routeDetails.distance,
+        duration: routeDetails.duration,
+        polyline: routeDetails.route.polyline,
+        waypoints: routeDetails.route.waypoints
+      }
+    });
+  } catch (error) {
+    console.error('Route Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get route' });
   }
 });
 
@@ -244,9 +279,25 @@ router.patch('/:id/accept', authMiddleware, async (req, res) => {
     trip.startedAt = new Date();
     await trip.save();
     await trip.populate('passenger', 'name phoneNumber profilePicture');
-    await trip.populate('driver', 'name phoneNumber profilePicture');
+    await trip.populate('driver', 'fullName phoneNumber profilePicture carModel registrationNumber rating currentLocation');
 
     console.log(`✅ Trip ${trip._id} accepted by driver ${req.user.id}`);
+
+    // Notify passenger via socket
+    socketManager.notifyClient(trip.passenger._id, 'ride:request:accepted', {
+      tripId: trip._id,
+      driver: {
+        id: trip.driver._id,
+        name: trip.driver.fullName,
+        phoneNumber: trip.driver.phoneNumber,
+        profilePicture: trip.driver.profilePicture,
+        carModel: trip.driver.carModel,
+        registrationNumber: trip.driver.registrationNumber,
+        rating: trip.driver.rating,
+        currentLocation: trip.driver.currentLocation
+      },
+      acceptedAt: trip.startedAt
+    });
 
     res.status(200).json({ success: true, message: 'Trip accepted', data: trip });
   } catch (error) {
@@ -261,7 +312,7 @@ router.patch('/:id/accept', authMiddleware, async (req, res) => {
 router.get('/:id/status', authMiddleware, async (req, res) => {
   try {
     const trip = await Trip.findById(req.params.id)
-      .populate('driver', 'name phoneNumber profilePicture');
+      .populate('driver', 'fullName phoneNumber profilePicture carModel registrationNumber rating currentLocation');
 
     if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
 
@@ -686,4 +737,84 @@ router.get('/driver/:driverId', authMiddleware, async (req, res) => {
   }
 });
 
-module.exports = router;
+// @route  PATCH /api/trips/:id/cancel
+// @desc   Cancel a trip (only if pending or active)
+// @access Private
+router.patch('/:id/cancel', authMiddleware, async (req, res) => {
+  try {
+    const trip = await Trip.findById(req.params.id);
+
+    if (!trip) {
+      return res.status(404).json({ success: false, message: 'Trip not found' });
+    }
+
+    // Check if trip can be cancelled
+    if (!['pending', 'active', 'arrived'].includes(trip.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel trip with status: ${trip.status}`
+      });
+    }
+
+    // Check authorization (passenger or driver can cancel)
+    if (trip.passenger.toString() !== req.user.id && trip.driver?.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to cancel this trip'
+      });
+    }
+
+    const cancellationReason = req.body.reason || 'User cancelled';
+    const cancelledBy = trip.passenger.toString() === req.user.id ? 'PASSENGER' : 'DRIVER';
+
+    const updatedTrip = await Trip.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          status: 'cancelled',
+          cancelledAt: new Date(),
+          cancellationReason,
+          cancelledBy
+        },
+        $push: {
+          statusHistory: {
+            status: 'cancelled',
+            changedAt: new Date(),
+            changedBy: req.user.id,
+            notes: cancellationReason
+          }
+        }
+      },
+      { new: true }
+    ).populate('passenger driver');
+
+    console.log(`❌ Trip ${req.params.id} cancelled by ${cancelledBy}`);
+
+    // Notify the other party via socket
+    if (cancelledBy === 'PASSENGER' && trip.driver) {
+      socketManager.notifyClient(trip.driver._id, 'trip:cancelled', {
+        tripId: trip._id,
+        reason: cancellationReason,
+        cancelledBy: 'PASSENGER'
+      });
+    } else if (cancelledBy === 'DRIVER') {
+      socketManager.notifyClient(trip.passenger._id, 'trip:cancelled', {
+        tripId: trip._id,
+        reason: cancellationReason,
+        cancelledBy: 'DRIVER'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Trip cancelled successfully',
+      data: updatedTrip
+    });
+  } catch (error) {
+    console.error('Cancel Trip Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to cancel trip' });
+  }
+});
+
+return router;
+};

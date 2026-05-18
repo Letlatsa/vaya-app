@@ -1,15 +1,17 @@
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal,
-  Animated, Dimensions, ActivityIndicator, Platform, ScrollView
+  Animated, Dimensions, ActivityIndicator, ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { UserContext } from './_layout';
 import { useRouter } from 'expo-router';
 import api from '@/constants/apiConfig';
+import { io } from 'socket.io-client';
+import authStorageClient from '@/utils/authStorage';
 
-const { width: W, height: H } = Dimensions.get('window');
+const { height: H } = Dimensions.get('window');
 const ORANGE = '#FF6B00';
 const DARK = '#1A1A2E';
 const GREEN = '#22C55E';
@@ -27,8 +29,8 @@ interface TripRequest {
 
 export default function ClientRideRequest() {
   const router = useRouter();
-  const { userData, token } = useContext(UserContext);
-  
+  const { userData } = useContext(UserContext);
+
   // States
   const [pickupLocation, setPickupLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
   const [destination, setDestination] = useState<{ lat: number; lng: number; address: string } | null>(null);
@@ -36,29 +38,19 @@ export default function ClientRideRequest() {
   const [estimatedFare, setEstimatedFare] = useState<number | null>(null);
   const [estimatedDistance, setEstimatedDistance] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showDestinationInput, setShowDestinationInput] = useState(false);
-  const [searchText, setSearchText] = useState('');
   const [activeTrip, setActiveTrip] = useState<TripRequest | null>(null);
   const [tripStatus, setTripStatus] = useState<string>('');
+  const [showDriverAcceptanceModal, setShowDriverAcceptanceModal] = useState(false);
+  const [acceptedDriver, setAcceptedDriver] = useState<any>(null);
+  const [acceptedTripData, setAcceptedTripData] = useState<any>(null);
+  const [searchText, setSearchText] = useState('');
 
   // Animations
   const slideAnim = useRef(new Animated.Value(H)).current;
 
   // Get current location on mount
-  useEffect(() => {
-    getCurrentLocation();
-  }, []);
-
-  // Poll for trip status
-  useEffect(() => {
-    if (activeTrip) {
-      const interval = setInterval(checkTripStatus, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [activeTrip]);
-
-  const getCurrentLocation = async () => {
+  const getCurrentLocation = useCallback(async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -80,13 +72,90 @@ export default function ClientRideRequest() {
     } catch (error) {
       console.error('Location Error:', error);
     }
-  };
+  }, []);
+
+  // Get current location on mount
+  useEffect(() => {
+    getCurrentLocation();
+  }, [getCurrentLocation]);
+
+  // Initialize socket connection
+  useEffect(() => {
+    const initSocket = async () => {
+      const token = await authStorageClient.getToken();
+      if (!token) return;
+
+      const socketConnection = io('http://localhost:5000', {
+        auth: { token },
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: 5
+      });
+
+      socketConnection.on('connect', () => {
+        console.log('Socket connected for ride requests');
+      });
+
+      socketConnection.on('ride:request:accepted', (data) => {
+        console.log('Ride accepted by driver:', data);
+
+        // Store driver and trip data then auto-navigate to tracking
+        setAcceptedDriver(data.driver);
+        setAcceptedTripData(data);
+        // Navigate immediately to enhanced tracking
+        router.push({
+          pathname: `/client-trip-tracking-enhanced`,
+          params: { tripId: data.tripId || data.trip?._id }
+        });
+      });
+
+      socketConnection.on('disconnect', () => {
+        console.log('Socket disconnected');
+      });
+
+      return () => {
+        socketConnection.disconnect();
+      };
+    };
+
+    initSocket();
+  }, [router]);
+
+  // Poll for trip status (fallback if socket fails)
+  const checkTripStatus = useCallback(async () => {
+    if (!activeTrip) return;
+
+    try {
+      const response = await api.get(`/api/trips/${activeTrip._id}`);
+      const trip = response.data.data;
+      setTripStatus(trip.status);
+
+      if (trip.status === 'active' && trip.driver) {
+        const driver = trip.driver;
+        setAcceptedTripData({ tripId: trip._id, trip });
+        setAcceptedDriver(driver);
+        router.push({ pathname: `/client-trip-tracking-enhanced`, params: { tripId: trip._id } });
+      }
+    } catch (error) {
+      console.error('Status Check Error:', error);
+    }
+  }, [activeTrip, router]);
+
+  useEffect(() => {
+    if (activeTrip) {
+      const interval = setInterval(checkTripStatus, 3000);
+      return () => clearInterval(interval);
+    }
+   }, [activeTrip, checkTripStatus]);
 
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
-      const response = await api.post('/trips/reverse-geocode', { lat, lng });
+      const response = await api.post('/api/trips/reverse-geocode', { lat, lng });
       return response.data.data.address;
-    } catch (error) {
+    } catch (err) {
+      console.error('Reverse geocode error:', err);
       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     }
   };
@@ -95,7 +164,7 @@ export default function ClientRideRequest() {
     if (!query || query.length < 3) return;
 
     try {
-      const response = await api.post('/trips/geocode', { address: query });
+      const response = await api.post('/api/trips/geocode', { address: query });
       const result = response.data.data;
       return {
         lat: result.coordinates.lat,
@@ -116,7 +185,7 @@ export default function ClientRideRequest() {
 
     setLoading(true);
     try {
-      const response = await api.post('/trips/estimate', {
+      const response = await api.post('/api/trips/estimate', {
         pickupCoords: { lat: pickupLocation.lat, lng: pickupLocation.lng },
         destinationCoords: { lat: destination.lat, lng: destination.lng }
       });
@@ -147,13 +216,12 @@ export default function ClientRideRequest() {
     setLoading(true);
     try {
       const response = await api.post(
-        '/trips',
+        '/api/trips',
         {
           pickupCoords: { lat: pickupLocation.lat, lng: pickupLocation.lng },
           destinationCoords: { lat: destination.lat, lng: destination.lng },
           paymentMethod
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
 
       const trip = response.data.data;
@@ -170,34 +238,13 @@ export default function ClientRideRequest() {
     }
   };
 
-  const checkTripStatus = async () => {
-    if (!activeTrip) return;
-
-    try {
-      const response = await api.get(`/trips/${activeTrip._id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      const trip = response.data.data;
-      setTripStatus(trip.status);
-
-      if (trip.status === 'active' && trip.driver) {
-        // Driver accepted, navigate to trip tracking
-        router.push(`/client-trip-tracking?tripId=${trip._id}`);
-      }
-    } catch (error) {
-      console.error('Status Check Error:', error);
-    }
-  };
-
   const cancelTrip = async () => {
     if (!activeTrip) return;
 
     try {
       await api.patch(
-        `/trips/${activeTrip._id}/cancel`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        `/api/trips/${activeTrip._id}/cancel`,
+        {}
       );
 
       setActiveTrip(null);
@@ -207,6 +254,23 @@ export default function ClientRideRequest() {
       console.error('Cancel Error:', error);
       alert('Failed to cancel ride');
     }
+  };
+
+  const handleDriverAcceptanceConfirm = () => {
+    if (!acceptedTripData || !acceptedDriver) return;
+
+    // Navigate to enhanced client-trip-tracking with real-time updates
+    router.push({
+      pathname: `/client-trip-tracking-enhanced`,
+      params: {
+        tripId: acceptedTripData.tripId || acceptedTripData.trip?._id
+      }
+    });
+
+    // Reset modal state
+    setShowDriverAcceptanceModal(false);
+    setAcceptedDriver(null);
+    setAcceptedTripData(null);
   };
 
   if (activeTrip) {
@@ -220,7 +284,7 @@ export default function ClientRideRequest() {
           {estimatedFare && (
             <View style={styles.fareCard}>
               <Text style={styles.fareLabel}>Estimated Fare</Text>
-              <Text style={styles.fareAmount}>${estimatedFare.toFixed(2)}</Text>
+              <Text style={styles.fareAmount}>LSL {estimatedFare.toFixed(2)}</Text>
               <Text style={styles.fareDistance}>{estimatedDistance?.toFixed(1)} km</Text>
             </View>
           )}
@@ -232,6 +296,56 @@ export default function ClientRideRequest() {
             <Text style={styles.cancelButtonText}>Cancel Ride</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Driver Acceptance Modal */}
+        <Modal
+          visible={showDriverAcceptanceModal}
+          transparent
+          animationType="fade"
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.driverAcceptanceModal}>
+              <Text style={styles.driverAcceptanceTitle}>Driver Found!</Text>
+              
+              {acceptedDriver && (
+                <>
+                  <View style={styles.driverInfoContainer}>
+                    <View style={styles.driverHeader}>
+                      <View style={styles.driverNameSection}>
+                        <Text style={styles.driverNameText}>{acceptedDriver.name}</Text>
+                        <View style={styles.ratingContainer}>
+                          <Text style={styles.ratingText}>⭐ {acceptedDriver.rating.toFixed(1)}</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={styles.driverDetailsSection}>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Car:</Text>
+                        <Text style={styles.detailValue}>{acceptedDriver.carModel || 'N/A'}</Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Plate:</Text>
+                        <Text style={styles.detailValue}>{acceptedDriver.registrationNumber || 'N/A'}</Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Phone:</Text>
+                        <Text style={styles.detailValue}>{acceptedDriver.phoneNumber}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.confirmButton}
+                    onPress={handleDriverAcceptanceConfirm}
+                  >
+                    <Text style={styles.confirmButtonText}>View on Map</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -311,7 +425,7 @@ export default function ClientRideRequest() {
           <>
             <View style={styles.fareCard}>
               <Text style={styles.fareLabel}>Estimated Fare</Text>
-              <Text style={styles.fareAmount}>${estimatedFare.toFixed(2)}</Text>
+              <Text style={styles.fareAmount}>LSL {estimatedFare.toFixed(2)}</Text>
               <Text style={styles.fareDistance}>{estimatedDistance?.toFixed(1)} km</Text>
             </View>
 
@@ -401,5 +515,20 @@ const styles = StyleSheet.create({
   searchBox: { padding: 20 },
   searchLabel: { fontSize: 14, fontWeight: '600', marginBottom: 10, color: DARK },
   searchInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 12 },
-  searchInputText: { fontSize: 14, color: DARK }
+  searchInputText: { fontSize: 14, color: DARK },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  driverAcceptanceModal: { backgroundColor: '#fff', borderRadius: 16, padding: 20, margin: 20, maxHeight: '80%' },
+  driverAcceptanceTitle: { fontSize: 20, fontWeight: '700', color: DARK, textAlign: 'center', marginBottom: 16 },
+  driverInfoContainer: { gap: 12 },
+  driverHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  driverNameSection: { flex: 1 },
+  driverNameText: { fontSize: 18, fontWeight: '600', color: DARK },
+  ratingContainer: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF8F4', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start' },
+  ratingText: { fontSize: 14, color: ORANGE, fontWeight: '600' },
+  driverDetailsSection: { gap: 8 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  detailLabel: { fontSize: 14, color: '#666', fontWeight: '500' },
+  detailValue: { fontSize: 14, color: DARK, fontWeight: '600' },
+  confirmButton: { flex: 1, paddingVertical: 14, backgroundColor: ORANGE, borderRadius: 8, alignItems: 'center' },
+  confirmButtonText: { color: '#fff', fontWeight: '600', fontSize: 16 }
 });

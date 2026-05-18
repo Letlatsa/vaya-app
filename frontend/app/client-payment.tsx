@@ -12,6 +12,13 @@ const ORANGE = '#FF6B00';
 const DARK = '#1A1A2E';
 const GREEN = '#22C55E';
 
+// Normalize trip data to ensure numeric fields have safe defaults
+const normalizeTripData = (data: any): Trip => ({
+  ...data,
+  estimatedFare: Number(data.estimatedFare) || 0,
+  distanceCovered: Number(data.distanceCovered) || 0
+});
+
 interface Trip {
   _id: string;
   passenger: { name: string };
@@ -25,7 +32,7 @@ interface Trip {
 export default function ClientPayment() {
   const router = useRouter();
   const { tripId } = useLocalSearchParams();
-  const { userData, token } = useContext(UserContext);
+  const { userData } = useContext(UserContext);
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,10 +48,8 @@ export default function ClientPayment() {
 
   const loadTrip = async () => {
     try {
-      const response = await api.get(`/trips/${tripId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setTrip(response.data.data);
+      const response = await api.get(`/api/trips/${tripId}`);
+      setTrip(normalizeTripData(response.data.data));
     } catch (error) {
       console.error('Load Trip Error:', error);
       alert('Failed to load trip');
@@ -64,14 +69,13 @@ export default function ClientPayment() {
           tripId: trip._id,
           amount: trip.estimatedFare,
           method: 'CASH'
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
 
       const payment = response.data.data;
       Alert.alert(
         'Payment Recorded',
-        `Cash payment of $${payment.amount.toFixed(2)} recorded. Please provide cash to driver.`,
+        `Cash payment of LSL ${payment.amount.toFixed(2)} recorded. Please provide cash to driver.`,
         [
           {
             text: 'Proceed to Rating',
@@ -107,8 +111,7 @@ export default function ClientPayment() {
             exp_year: parseInt(cardExpiry.split('/')[1]),
             cvc: cardCvv
           }
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
 
       const payment = response.data.data;
@@ -116,7 +119,7 @@ export default function ClientPayment() {
       
       Alert.alert(
         'Payment Successful',
-        `Card payment of $${payment.amount.toFixed(2)} completed successfully.`,
+        `Card payment of LSL ${payment.amount.toFixed(2)} completed successfully.`,
         [
           {
             text: 'Rate Driver',
@@ -130,20 +133,6 @@ export default function ClientPayment() {
     } finally {
       setProcessing(false);
     }
-  };
-
-  const skipPayment = () => {
-    Alert.alert(
-      'Skip Payment',
-      'You can pay cash to the driver later. Proceed?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Proceed',
-          onPress: () => router.push(`/client-rating?tripId=${tripId}`)
-        }
-      ]
-    );
   };
 
   if (loading) {
@@ -200,15 +189,15 @@ export default function ClientPayment() {
           <View style={styles.fareBreakdown}>
             <View style={styles.fareItem}>
               <Text style={styles.fareItemLabel}>Base Fare</Text>
-              <Text style={styles.fareItemValue}>$60.00</Text>
-            </View>
-            <View style={styles.fareItem}>
-              <Text style={styles.fareItemLabel}>Distance ({trip.distanceCovered.toFixed(1)} km)</Text>
-              <Text style={styles.fareItemValue}>${(trip.distanceCovered * 10).toFixed(2)}</Text>
-            </View>
-            <View style={[styles.fareItem, styles.totalFare]}>
-              <Text style={styles.totalLabel}>Total Fare</Text>
-              <Text style={styles.totalAmount}>${trip.estimatedFare.toFixed(2)}</Text>
+            <Text style={styles.fareItemValue}>LSL 60.00</Text>
+          </View>
+          <View style={styles.fareItem}>
+            <Text style={styles.fareItemLabel}>Distance ({trip.distanceCovered.toFixed(1)} km)</Text>
+            <Text style={styles.fareItemValue}>LSL {(trip.distanceCovered * 10).toFixed(2)}</Text>
+          </View>
+          <View style={[styles.fareItem, styles.totalFare]}>
+            <Text style={styles.totalLabel}>Total Fare</Text>
+            <Text style={styles.totalAmount}>LSL {trip.estimatedFare.toFixed(2)}</Text>
             </View>
           </View>
         </View>
@@ -270,14 +259,6 @@ export default function ClientPayment() {
           </TouchableOpacity>
         </View>
 
-        {/* Skip Button */}
-        <TouchableOpacity
-          style={styles.skipButton}
-          onPress={skipPayment}
-          disabled={processing}
-        >
-          <Text style={styles.skipButtonText}>Pay Later</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       {/* Card Payment Modal */}
@@ -361,7 +342,7 @@ export default function ClientPayment() {
             {/* Payment Amount */}
             <View style={styles.amountBox}>
               <Text style={styles.amountLabel}>Amount to Pay</Text>
-              <Text style={styles.amountValue}>${trip.estimatedFare.toFixed(2)}</Text>
+            <Text style={styles.amountValue}>LSL {trip.estimatedFare.toFixed(2)}</Text>
             </View>
 
             {/* Pay Button */}
@@ -373,7 +354,7 @@ export default function ClientPayment() {
               {processing ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.payButtonText}>Pay ${trip.estimatedFare.toFixed(2)}</Text>
+                <Text style={styles.payButtonText}>Pay LSL {trip.estimatedFare.toFixed(2)}</Text>
               )}
             </TouchableOpacity>
 

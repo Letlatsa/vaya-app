@@ -1,0 +1,14 @@
+{
+  "presets": ["babel-preset-expo"],
+  "plugins": [
+    [
+      "module-resolver",
+      {
+        "alias": {
+          "react-native/Libraries/Utilities/codegenNativeCommands": "./shims/codegenNativeCommands.js",
+          "react-native-maps": "./shims/react-native-maps.js"
+        }
+      }
+    ]
+  ]
+}

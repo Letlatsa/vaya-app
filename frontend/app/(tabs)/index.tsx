@@ -7,7 +7,7 @@ import {
 import { useNavigation, useRouter, useLocalSearchParams } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { UserContext } from '../_layout';
-import RideMap from '@/components/RideMap';
+import RideMap from '../../components/RideMap';
 import api from '@/constants/apiConfig';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
@@ -247,6 +247,34 @@ export default function HomeScreen() {
     }
   };
 
+  const goToActiveTrip = () => {
+    if (!tripId || !driverInfo) return;
+
+    router.push({
+      pathname: '/client-trip-tracking-enhanced',
+      // pathname: '/active-ride-screen',
+      params: {
+        tripId,
+        driverName: driverInfo.name || '',
+        driverRating: driverInfo.rating?.toString() || '0',
+        driverPhone: driverInfo.phoneNumber || '',
+        driverProfilePicture: driverInfo.profilePicture || '',
+        carModel: driverInfo.carModel || driverInfo.carMake || '',
+        carPlate: driverInfo.registrationNumber || '',
+        driverLat: driverInfo.currentLocation?.lat?.toString() || '',
+        driverLng: driverInfo.currentLocation?.lng?.toString() || ''
+      }
+    });
+
+    clearInterval(pollRef.current!);
+    setTripStatus('idle');
+    setTripId(null);
+    setPickup(null);
+    setDestination(null);
+    setPickupMode(true);
+    togglePanel(false);
+  };
+
   const handleCancelTrip = async () => {
     if (!tripId) return;
     try {
@@ -339,7 +367,7 @@ export default function HomeScreen() {
           <View style={styles.handle} />
         </TouchableOpacity>
 
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScroll={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" scrollEventThrottle={16} onScroll={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
           <Text style={styles.panelTitle}>Book a Ride</Text>
 
           {/* Pickup Field */}
@@ -504,14 +532,7 @@ export default function HomeScreen() {
                 </View>
               </View>
             )}
-            <TouchableOpacity style={styles.bookBtn} onPress={() => {
-              setTripStatus('idle');
-              setTripId(null);
-              setPickup(null);
-              setDestination(null);
-              setPickupMode(true);
-              togglePanel(false);
-            }}>
+            <TouchableOpacity style={styles.bookBtn} onPress={goToActiveTrip}>
               <Text style={styles.bookBtnText}>Done</Text>
             </TouchableOpacity>
           </View>
