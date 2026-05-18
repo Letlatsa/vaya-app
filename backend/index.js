@@ -28,7 +28,7 @@ app.use((req, res, next) => {
 // API Routes
 app.use('/api/users', userApi);
 app.use('/api/drivers', driverApi);
-app.use('/api/trips', tripApi);
+app.use('/api/trips', tripApi(socketManager));
 
 // Debug: verify routes are loaded
 console.log('✅ Routes loaded: /api/users, /api/drivers, /api/trips');

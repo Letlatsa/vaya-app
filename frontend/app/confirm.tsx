@@ -71,7 +71,7 @@ export default function ConfirmScreen() {
         duration: routeInfo?.duration || 0,
       };
 
-      const response = await api.post('/trips', bookingData);
+      const response = await api.post('/api/trips', bookingData);
       if (response.data.success) {
         Alert.alert('Success', 'Ride booked successfully!', [
           { text: 'OK', onPress: () => router.replace('/(tabs)') },

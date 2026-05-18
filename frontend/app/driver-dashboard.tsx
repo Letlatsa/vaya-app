@@ -20,6 +20,15 @@ import axios from 'axios';
 
 const API_URL = 'http://localhost:5000/api';
 
+interface Trip {
+  _id: string;
+  pickupLocation: { type: string; coordinates: number[]; address: string } | null;
+  destination?: { address: string } | string;
+  distance?: number;
+  estimatedFare?: number;
+  passengerId?: { name: string };
+}
+
 export default function DriverDashboardScreen() {
   const router = useRouter();
   const { userData } = useContext(UserContext);
@@ -38,7 +47,7 @@ export default function DriverDashboardScreen() {
   const buttonFontSize = Math.min(width * 0.035, 14);
 
   const [loading, setLoading] = useState(false);
-  const [pendingTrips, setPendingTrips] = useState([]);
+  const [pendingTrips, setPendingTrips] = useState<Trip[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalMessage, setModalMessage] = useState('');
@@ -68,11 +77,8 @@ export default function DriverDashboardScreen() {
       setLoading(true);
       const response = await axios.patch(`${API_URL}/trips/${tripId}/accept`);
       if (response.data.success) {
-        setModalTitle('Success');
-        setModalMessage('Trip accepted! You can now start driving.');
-        setIsSuccess(true);
-        setModalVisible(true);
-        fetchPendingTrips();
+        // Navigate to ongoing trip screen
+        router.push(`/driver-ongoing-trip?tripId=${tripId}`);
       }
     } catch (error: any) {
       setModalTitle('Error');
@@ -91,7 +97,7 @@ export default function DriverDashboardScreen() {
         text: 'Logout',
         onPress: async () => {
           try {
-            await authStorage.clearToken();
+            await authStorage.removeToken();
             router.replace('/');
           } catch (error) {
             console.error('Logout error:', error);
@@ -248,22 +254,24 @@ export default function DriverDashboardScreen() {
                       <Text
                         style={[styles.tripAddress, { fontSize: subtitleFontSize }]}
                         numberOfLines={1}
-                      >
-                        {trip.pickupLocation || 'Pickup Location'}
-                      </Text>
-                      <Text style={[styles.tripDistance, { fontSize: subtitleFontSize * 0.85 }]}>
-                        {trip.distance ? `${trip.distance.toFixed(1)} km` : 'Distance N/A'}
-                      </Text>
-                      <Text
-                        style={[styles.tripAddress, { fontSize: subtitleFontSize, marginTop: 8 }]}
-                        numberOfLines={1}
-                      >
-                        {trip.dropoffLocation || 'Dropoff Location'}
-                      </Text>
+                        >
+                        {trip.pickupLocation?.address || 'Pickup Location'}
+                        </Text>
+                        <Text style={[styles.tripDistance, { fontSize: subtitleFontSize * 0.85 }]}>
+                          {trip.distance ? `${trip.distance.toFixed(1)} km` : 'Distance N/A'}
+                        </Text>
+                        <Text
+                          style={[styles.tripAddress, { fontSize: subtitleFontSize, marginTop: 8 }]}
+                          numberOfLines={1}
+                        >
+                        {typeof trip.destination === 'object' && trip.destination
+                          ? trip.destination.address
+                          : (trip.destination as string | null || 'Dropoff Location')}
+                        </Text>
                     </View>
                     <View style={styles.tripFare}>
                       <Text style={[styles.fareAmount, { fontSize: titleFontSize }]}>
-                        ${trip.estimatedFare ? trip.estimatedFare.toFixed(2) : '0.00'}
+                        LSL {trip.estimatedFare ? trip.estimatedFare.toFixed(2) : '0.00'}
                       </Text>
                     </View>
                   </View>
